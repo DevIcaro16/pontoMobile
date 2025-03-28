@@ -44,7 +44,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const loginAuth = (userData: any) => {
         console.log("Login realizado:", userData);
         setUser(userData);
-        AsyncStorage.setItem("user", JSON.stringify(userData)); // Salva no AsyncS
+        AsyncStorage.setItem("user", JSON.stringify(userData));
     };
 
     // const logout = async () => {
@@ -57,7 +57,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const logout = async () => {
         try {
             setUser(null); // Limpa o estado
-            await AsyncStorage.removeItem("user"); // Remove do AsyncStorage
+            await AsyncStorage.removeItem("user");
             console.log("Logout realizado");
         } catch (error) {
             console.error("Erro ao realizar logout:", error);

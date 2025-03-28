@@ -3,46 +3,108 @@ import { type SQLiteDatabase } from "expo-sqlite";
 export async function initializeDatabase(database: SQLiteDatabase) {
 
     await database.execAsync(
+
         `
 
         -- Tabela de Empresas (spi_emp)
         CREATE TABLE IF NOT EXISTS spi_emp (
-            nmr_empresa INTEGER PRIMARY KEY,
-            cep TEXT,
-            endereco TEXT,
-            numero TEXT,
-            bairro TEXT,
-            complemento TEXT,
-            cidade TEXT,
-            uf TEXT
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chave TEXT UNIQUE NOT NULL,
+            descricao TEXT,
+            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
         );
 
         -- Tabela de Setores / Clientes (spi_cli)
         CREATE TABLE IF NOT EXISTS spi_cli (
-            idsetor INTEGER PRIMARY KEY AUTOINCREMENT,
-            nomesetor TEXT NOT NULL
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chave TEXT UNIQUE NOT NULL,
+            descricao TEXT,
+            latitude DECIMAL(10,8),
+            longitude DECIMAL(11,8),
+            empresa TEXT,
+            endereco TEXT,
+            distancia INTEGER DEFAULT 100,
+            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (empresa) REFERENCES spi_emp(chave) ON DELETE RESTRICT ON UPDATE RESTRICT
         );
 
-        -- Tabela de usuarios (spi_fun)
+
+        CREATE TABLE IF NOT EXISTS spi_funcoes (
+            id  INTEGER PRIMARY KEY AUTOINCREMENT,
+            cbo VARCHAR(255) NOT NULL,
+            des VARCHAR(255) NOT NULL,
+            slb FLOAT NOT NULL,
+            slc FLOAT NOT NULL
+        );
+
+
+
+        -- Tabela de usuários (spi_user)
         CREATE TABLE IF NOT EXISTS spi_user (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome TEXT NOT NULL,
-            cpf TEXT UNIQUE NOT NULL,
-            login TEXT UNIQUE NOT NULL, 
-            senha TEXT NOT NULL,
-            c_senha TEXT NOT NULL,
-            empresa TEXT
+            id INTEGER PRIMARY KEY ,
+            empresa TEXT NOT NULL,
+            username TEXT NOT NULL,
+            password TEXT NOT NULL,
+            latitudeCantoSuperiorEsquerdo DECIMAL(9,6),
+            longitudeCantoSuperiorEsquerdo DECIMAL(9,6),
+            latitudeCantoInferiorDireito DECIMAL(9,6),
+            longitudeCantoInferiorDireito DECIMAL(9,6),
+            verificacaoLocalizacaoObrigatoria BOOLEAN DEFAULT 1,
+            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+            nome TEXT,
+            cliente TEXT,
+            escala INTEGER DEFAULT 0,
+            modeloBatida INTEGER DEFAULT 1,
+            Address TEXT,
+            Gender TEXT,
+            birthdate DATE,
+            phone TEXT,
+            email TEXT,
+            Status TEXT,
+            posto TEXT,
+            matricula TEXT,
+            cpf TEXT,
+            multicliente INTEGER DEFAULT 0,
+            modeloposto INTEGER DEFAULT 1,
+            ferias INTEGER DEFAULT 0,
+            ina INTEGER DEFAULT 0, 
+            ultbat TEXT,
+            funcao_id INTEGER NOT NULL,
+            FOREIGN KEY (funcao_id) REFERENCES spi_funcoes(id) ON DELETE RESTRICT ON UPDATE CASCADE
+            FOREIGN KEY (empresa) REFERENCES spi_emp(chave) ON UPDATE RESTRICT,
+            FOREIGN KEY (cliente) REFERENCES spi_cli(chave) ON DELETE RESTRICT ON UPDATE RESTRICT
         );
 
-         -- tabela marcacoes
-         CREATE TABLE IF NOT EXISTS spi_pon (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id CHAR(5) NOT NULL,
-            time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            latitude VARCHAR(255) NOT NULL,
-            longitude VARCHAR(255) NOT NULL
-        );
 
-        `
-    );
+
+        -- Tabela de marcações (spi_pon)
+        CREATE TABLE IF NOT EXISTS spi_pon (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            userId INTEGER NOT NULL,
+            username varchar(255) NOT NULL,
+            empresa varchar(255) NOT NULL,
+            tipo INTEGER NOT NULL ,
+            data datetime NOT NULL,
+            diaDaSemana varchar(255) NOT NULL,
+            latitude decimal(10,6) DEFAULT NULL,
+            longitude decimal(10,6) DEFAULT NULL,
+            createdAt datetime NOT NULL,
+            updatedAt datetime NOT NULL,
+            distancia INTEGER DEFAULT NULL,
+            descricao varchar(255) DEFAULT NULL,
+            cliente_id INTEGER DEFAULT NULL,
+            cliente_des varchar(200) DEFAULT NULL,
+            status varchar(200) DEFAULT 'novo',
+            adm_id INTEGER DEFAULT NULL,
+            resposta varchar(200) DEFAULT NULL,
+            escala INTEGER DEFAULT NULL,
+            modeloBatida INTEGER DEFAULT NULL,
+            statusmsg varchar(200) DEFAULT 'OK',
+            foto_path varchar(240) DEFAULT 'foto.png',
+            status_cod INTEGER DEFAULT NULL
+        );
+    `);
 }

@@ -10,15 +10,23 @@ import api from '@/config/api';
 
 
 const InfoScreen = () => {
+
   // Estado para armazenar os dados do usuário
   const { user, logout } = useAuth(); // Obtém o usuário do contexto
   const [apiVersion, setApiVersion] = useState<string | null>(null);
-  const username = user?.userRequest.nomefuncionario;
-  const empresa = user?.userRequest.empresa;
-  const cargo = user?.userRequest.cargo;
-  const cliente = user?.userRequest.setor;
-  const escala = user?.userRequest.escala;
-  const observacao = user?.userRequest.observacao;
+
+  const userData = user?.response?.[0] ?? user ?? {};
+
+  console.log(userData);
+  // Usa destructuring para pegar os valores, evitando repetição
+  const {
+    username,
+    empresa,
+    cliente,
+    escala,
+    cargo
+  } = userData;
+
 
   let diaDaSemana: number;
 
@@ -106,7 +114,7 @@ const InfoScreen = () => {
           <Text style={styles.cardText}>Cargo: <Text style={styles.title}>{cargo}</Text></Text>
           <Text style={styles.cardText}>Setor: <Text style={styles.title}>{cliente}</Text></Text>
           <Text style={styles.cardText}>Escala: <Text style={styles.title}>{escala}</Text></Text>
-          <Text style={styles.cardText}>Observação: <Text style={styles.title}>{observacao}</Text></Text>
+          {/* <Text style={styles.cardText}>Observação: <Text style={styles.title}>{observacao}</Text></Text> */}
 
           {/* <Text style={styles.cardText}>Padrão de Ponto:</Text> */}
 

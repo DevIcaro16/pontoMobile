@@ -18,16 +18,20 @@ const AuthNavigation = () => {
     const [apiVersion, setApiVersion] = useState("");
     const [dadosEmpresaSincronia, setDadosEmpresaSincronia] = useState([]);
     const [dadosSetoresSincronia, setDadosSetoresSincronia] = useState([]);
+    const [dadosFuncoesSincronia, setDadosFuncoesSincronia] = useState([]);
     const [dadosUsuariosSincronia, setDadosUsuariosSincronia] = useState([]);
 
     useEffect(() => {
         const fetchApiVersion = async () => {
             try {
+
                 ToastAndroid.show("Verificando versão da API...", ToastAndroid.SHORT);
+                //Validado com Sr.Sérgio -> 26/03
 
                 const response = await api.get("/apiversion");
 
                 if (response.data.success) {
+                    console.log("Conectado com a Versão da API");
                     setApiVersion(response.data.apiversion);
                     ToastAndroid.show(`API Versão: ${response.data.apiversion}`, ToastAndroid.SHORT);
                 } else {
@@ -39,6 +43,7 @@ const AuthNavigation = () => {
         };
 
         const fetchSincronia = async () => {
+            const useDatabase = useUserDatabase();
             try {
                 ToastAndroid.show("Aguarde, sincronizando com a base de dados...", ToastAndroid.SHORT);
 
@@ -46,16 +51,20 @@ const AuthNavigation = () => {
 
                 if (response.data.success) {
                     setDadosEmpresaSincronia(response.data.empresas);
-                    setDadosSetoresSincronia(response.data.setores);
-                    setDadosUsuariosSincronia(response.data.usuarios);
+                    setDadosSetoresSincronia(response.data.clientes);
+                    setDadosFuncoesSincronia(response.data.funcoes);
+                    setDadosUsuariosSincronia(response.data.users);
                     ToastAndroid.show(`Sincronia Realizada!`, ToastAndroid.SHORT);
-                    // console.log(dadosEmpresaSincronia);
-
                 } else {
                     ToastAndroid.show("Erro ao tentar sincronizar com a base", ToastAndroid.LONG);
                 }
             } catch (error) {
+                setTimeout(() => {
+                    setLoading(false);
+                }, 5000);
                 ToastAndroid.show("Falha na conexão com a API", ToastAndroid.LONG);
+
+                await useDatabase.buscarEmpresas();
             }
         };
 
@@ -72,7 +81,9 @@ const AuthNavigation = () => {
             try {
                 await useDatabase.sincronizarEmpresas(dadosEmpresaSincronia);
                 await useDatabase.sincronizarSetores(dadosSetoresSincronia);
+                await useDatabase.sincronizarFuncoes(dadosFuncoesSincronia);
                 await useDatabase.sincronizarUsuarios(dadosUsuariosSincronia);
+                console.log("DADOS DO Usuário" + dadosUsuariosSincronia);
                 console.log("Sincronizado com Sucesso!");
                 setLoading(false);
             } catch (error) {
@@ -85,11 +96,16 @@ const AuthNavigation = () => {
             // buscarUltimos30Pontos();
         }
 
-        if (dadosEmpresaSincronia.length > 0 || dadosSetoresSincronia.length || dadosUsuariosSincronia.length) {
+        if (
+            dadosEmpresaSincronia.length > 0 ||
+            dadosSetoresSincronia.length ||
+            dadosFuncoesSincronia.length ||
+            dadosUsuariosSincronia.length
+        ) {
             sincronizar();
         }
 
-    }, [user, dadosEmpresaSincronia, dadosSetoresSincronia, dadosUsuariosSincronia]);
+    }, [user, dadosEmpresaSincronia, dadosSetoresSincronia, dadosFuncoesSincronia, dadosUsuariosSincronia]);
 
     if (loading) {
         return (

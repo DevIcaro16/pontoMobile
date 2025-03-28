@@ -13,18 +13,20 @@ import api from '@/config/api';
 
 interface Ponto {
   id: number;
-  dataehora: string;
+  data: string;
   // descricao: string;
   latitude: number;
   longitude: number;
-  // status: string;
+  status: string;
   // tipo: number;
 }
 
 const HistoricoScreen = () => {
 
   const { user } = useAuth(); // Obtém o usuário do contexto
-  const userID = user?.userRequest.idfuncionario || 0;
+  const userID = user?.id || user?.response[0].id;
+  console.log(userID);
+  // const userID = user?.userRequest.idfuncionario || 0;
   const [data, setData] = useState<any[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
@@ -55,7 +57,9 @@ const HistoricoScreen = () => {
       setIsConnected(state.isConnected ?? false);
     });
 
-    fetchPontosUsuario();
+    setTimeout(() => {
+      fetchPontosUsuario();
+    }, 5000);
 
     return () => unsubscribe();
   }, []);
@@ -65,7 +69,7 @@ const HistoricoScreen = () => {
 
     try {
       const response = await api.post("/pontosdousuario", {
-        userID: "00002"
+        userID: userID
       });
       //   const response = await fetch('https://apispiceponto.sistemasgeo.com.br/pontos_usuario', {
       //     method: 'POST',
@@ -88,15 +92,15 @@ const HistoricoScreen = () => {
 
       const formattedPontos = pontos.map((ponto, index) => ({
         id: ponto.id,
-        time: new Date(ponto.dataehora).toLocaleDateString('pt-BR'),
+        time: new Date(ponto.data).toLocaleDateString('pt-BR'),
         // title: ponto.descricao,
-        // description: `Batido em: ${new Date(ponto.dataehora).toLocaleString('pt-BR')}\nConsta como: ${ponto.status}`,
-        description: `Batido em: ${new Date(ponto.dataehora).toLocaleString('pt-BR')}\n`,
-        data: ponto.dataehora,
+        // description: `Batido em: ${new Date(ponto.data).toLocaleString('pt-BR')}\nConsta como: ${ponto.status}`,
+        description: `Batido em: ${new Date(ponto.data).toLocaleString('pt-BR')}\n`,
+        data: ponto.data,
         // descricao: ponto.descricao,
         latitudeAtual: ponto.latitude,
         longitudeAtual: ponto.longitude,
-        // status: ponto.status,
+        status: ponto.statusmsg,
         // circleColor: ponto.tipo % 2 === 0 ? 'orange' : '#2196F3',
         circleColor: '#2196F3',
         lineColor: 'grey'
@@ -104,10 +108,9 @@ const HistoricoScreen = () => {
 
       setData(formattedPontos);
 
-
     } catch (error) {
       console.error(error);
-      Alert.alert('Erro', error instanceof Error ? error.message : 'Erro desconhecido');
+      Alert.alert('Erro', error instanceof Error ? 'Não foi possivel sincronizar o histórico' : 'Erro desconhecido');
     }
   };
 
@@ -220,7 +223,9 @@ const HistoricoScreen = () => {
   return (
     <View style={styles.container}>
       {isConnected && (
-        <Button title="Retificar" onPress={() => setFormModalVisible(true)} style={styles.retificarButton} />
+        <>
+          <Button title="Retificar" onPress={() => setFormModalVisible(true)} style={styles.retificarButton} />
+        </>
       )}
       <Timeline
         data={data}
@@ -393,6 +398,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'white'
   },
   retificarButton: {
+    marginTop: 20,
+    marginBottom: 200,
+    alignSelf: 'center'
+  },
+  sincronizarButton: {
     marginBottom: 20,
     alignSelf: 'center'
   },

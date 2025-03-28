@@ -15,7 +15,7 @@ const LoginScreen = () => {
     const [id, setId] = useState<number>(0);
     const [username, setUsername] = useState<string>('');
     const [password, setPassword] = useState<string>('');
-    // const [empresa, setEmpresa] = useState<string>('');
+    const [empresa, setEmpresa] = useState<string>('');
     const [cliente, setCliente] = useState<string>('');
     const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
 
@@ -30,22 +30,6 @@ const LoginScreen = () => {
 
     const userDatabase = useUserDatabase();
 
-    // async function create() {
-    //     try {
-    //         const response = await userDatabase.create({
-    //             empresa,
-    //             username,
-    //             password
-    //         });
-
-    //         if (response) {
-
-    //         }
-    //     } catch (error) {
-    //         console.log(error)
-    //         throw error;
-    //     }
-    // }
 
     async function login() {
 
@@ -56,22 +40,22 @@ const LoginScreen = () => {
             }
 
 
-            const response = await api.post("/login", {
-                login: "ADMIN",
-                senha: "102030"
-            });
+            // const response = await api.post("/login", {
+            //     empresa: empresa,
+            //     login: username,
+            //     senha: password
+            // });
 
-            const userRequest = response.data.user;
-            const msg = response.data.message;
+            const response = await userDatabase.login(empresa, username, password);
 
-            if (!userRequest) {  // Corrigido: antes estava `userRequest != null`, agora verifica corretamente.
-                Alert.alert(msg || "Nenhum Usuário Encontrado!");
+            if (!response || typeof response === "string") {
+                Alert.alert(response || "Erro desconhecido ao realizar login!");
                 return;
             }
 
             Alert.alert("Usuário Logado com Sucesso!");
 
-            loginAuth({ userRequest });  // Corrigido: passar apenas `userRequest`, não um objeto dentro de outro objeto.
+            loginAuth({ response });
 
             setIsAuthenticated(true);
 
@@ -100,22 +84,28 @@ const LoginScreen = () => {
 
             <Image source={require('../assets/logo.png')} style={styles.logo} />
             <Text style={styles.title}>Login</Text>
-            {/* <TextInput
+
+            <TextInput
+                autoCapitalize="none"
                 placeholder="Empresa"
                 value={empresa}
                 onChangeText={setEmpresa}
                 style={styles.input}
-            /> */}
+            />
             <TextInput
+                autoCapitalize="none"
                 placeholder="Usuário"
                 value={username}
+                // value="ADMIN"
                 onChangeText={setUsername}
                 style={styles.input}
             />
             <TextInput
+                autoCapitalize="none"
                 placeholder="Senha"
                 secureTextEntry
                 value={password}
+                // value="102030"
                 onChangeText={setPassword}
                 style={styles.input}
             />
