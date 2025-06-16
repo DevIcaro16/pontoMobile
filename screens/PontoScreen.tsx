@@ -3,12 +3,15 @@ import { View, Text, StyleSheet, Alert, TouchableOpacity, Image } from 'react-na
 import * as Location from 'expo-location';
 import { useAuth } from '../contexts/AuthContext'; // Ajuste o caminho conforme necessário
 import * as LocalAuthentication from 'expo-local-authentication'; //Leitor de digital, etc
-
+import NetInfo from '@react-native-community/netinfo';
 import { addMinutes, format } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 import { ptBR } from 'date-fns/locale'; // Importa o locale do Português do Brasil
 import { useUserDatabase } from '@/database/useUserDatabase';
 import api from '@/config/api';
+import RelogioHoraAtual from '@/components/HoraAtual';
+import MonitorConexao from '@/components/MonitorConexao';
+import * as Network from 'expo-network';
 
 interface PontoPayload {
   userId: number;
@@ -29,7 +32,7 @@ interface PontoPayload {
   adm_id: number | null;
   resposta: string | null;
   escala: string | null;
-  modeloBatida: string | null;
+  modeloBatida: number | null;
   statusmsg: string;
   foto_path: string;
   status_cod: number | null;
@@ -39,9 +42,8 @@ interface PontoPayload {
 const PontoScreen = () => {
 
   const { user } = useAuth(); // Obtém o usuário do contexto
-  console.log(user);
-  // const [location, setLocation] = useState<Location.LocationObject | null>(null);
-  const [location, setLocation] = useState<null | { latitude: number; longitude: number }>(null);
+  const [conectadoWifi, setConectadoWifi] = useState<boolean | null>(null);
+  const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
 
 
   // const [ultimoPontoReg, setUltimoPontoReg] = useState<{ hora: string; tipo: string; tipoDesc: string } | null>(null);
@@ -49,19 +51,24 @@ const PontoScreen = () => {
   const [isButtonDisabled, setIsButtonDisabled] = useState(false);
 
   const [ultimoPontoReg, setUltimoPontoReg] = useState<boolean>(false);
-  // const [ultimoPontoHor, setUltimoPontoHor] = useState<string>("");
-  const [ultimoPontoHor, setUltimoPontoHor] = useState<string[] | null>([]);
-
+  const [ultimoPontoHor, setUltimoPontoHor] = useState<Array<string | Date>>([]);
+  const [isConnected, setIsConnected] = useState<boolean>(true);
   const [tipo, setTipo] = useState<number>(0);
+  const [localizacao, setLocalizacao] = useState<string | null>(null);
 
   function formatDate(date: Date) {
     const formattedDate = format(date, "EEEE, d 'de' MMMM", { locale: ptBR });
     return formattedDate.charAt(0).toUpperCase() + formattedDate.slice(1);
   }
 
+  function capitalize(text: string): string {
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  }
+
   function getDayOfWeek(date: Date) {
-    const fullDay = format(date, "EEEE", { locale: ptBR }); // Retorna "quinta-feira"
-    return fullDay.split("-")[0]; // Retorna "quinta"
+    const fullDay = format(date, "EEEE", { locale: ptBR });
+    const fullDayUpper = capitalize(fullDay.split("-")[0]);
+    return fullDayUpper // Retorna "Quinta"
   }
   // Uso da função
   const currentDate = formatDate(new Date());
@@ -70,113 +77,271 @@ const PontoScreen = () => {
 
 
   const buscarPontosUsuario = async () => {
+    if (!userID) return [];
     const response = await userDatabase.buscarPontosUsuario(userIDFormat);
     return response;
   };
 
+
+  const carregarPontos = async () => {
+    try {
+      const pontosDoDia = await buscarPontosUsuario();
+      if (pontosDoDia && pontosDoDia.length > 0) {
+        setUltimoPontoReg(true);
+        const pontosDifUndefined = pontosDoDia.filter(ponto => ponto != undefined);
+        console.log('carregarPontos: ')
+        console.log(pontosDifUndefined);
+        setUltimoPontoHor(pontosDifUndefined);
+        setTipo(pontosDoDia.length + 1);
+        //console.log('setUltimoPontoHor' + pontosDoDia + "-" + pontosDoDia.length);
+      }
+    } catch (error) {
+      console.error("Erro ao buscar pontos diários do usuário:", error);
+    }
+  };
+
   useEffect(() => {
     (async () => {
-      let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert("Permissão negada", "Você precisa permitir o acesso à localização.");
-        return;
+      try {
+        let { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") {
+          Alert.alert("Permissão negada", "Você precisa permitir o acesso à localização.");
+          return;
+        }
+
+        let location = await Location.getCurrentPositionAsync({});
+        if (location?.coords?.latitude !== undefined && location?.coords?.longitude !== undefined) {
+          setLocation({
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+          });
+        }
+      } catch (error) {
+        console.error("Erro ao obter localização:", error);
+        Alert.alert("Erro", "Não foi possível obter sua localização.");
       }
-
-
-      let location = await Location.getCurrentPositionAsync({});
-      if (location.coords.latitude !== undefined && location.coords.longitude !== undefined) {
-        setLocation({
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
-        });
-      }
-
-      console.log(location.coords.latitude);
-      console.log(location.coords.longitude);
     })();
   }, []);
 
   useEffect(() => {
-    const carregarPontos = async () => {
+    const verificarConexao = async () => {
       try {
-        const pontosDoDia = await buscarPontosUsuario();
-
-        if (pontosDoDia) {
-          setUltimoPontoReg(true);
-          setUltimoPontoHor(pontosDoDia.filter(ponto => ponto != undefined));
-          setTipo(pontosDoDia.length);
-          console.log('setUltimoPontoHor' + pontosDoDia + "-" + pontosDoDia.length);
-        }
+        const status = await Network.getNetworkStateAsync();
+        setConectadoWifi(status.type === Network.NetworkStateType.WIFI);
       } catch (error) {
-        console.error("Erro ao buscar pontos diários do usuário:", error);
+        console.error("Erro ao verificar conexão:", error);
       }
     };
 
-    carregarPontos();
-  }, [user]);  // Recarrega os pontos sempre que o usuário mudar
+    verificarConexao();
+
+    // Verifica a conexão a cada 3 segundos
+    const intervalo = setInterval(verificarConexao, 3000);
+
+    return () => clearInterval(intervalo);
+  }, []);
+
+  useEffect(() => {
+    if (user) {
+      carregarPontos();
+    }
+  }, [user]);
+
+  const userID = user?.id ?? '';
+
+  useEffect(() => {
+    const sincronizarBatidas = async () => {
+
+      // Se o Wi-Fi, não sincroniza
+      if (!conectadoWifi) return;
+
+      try {
+        const response = await api.post("/sincronizarBatidas", {
+          userId: userID
+        });
 
 
+        if (response.status === 200) {
+          const pontos = response.data.pontos || []; // Garante que seja sempre um array
+
+          const useDatabase = await useUserDatabase();
+
+          if (pontos.length > 0) {
+            //console.log(`Encontrados ${pontos.length} pontos para sincronizar.`);
+
+            await useDatabase.sincronizarBatidasPonto(userID);
+          } else {
+            //console.log("Nenhum ponto encontrado para sincronizar.");
+            await useDatabase.sincronizarBatidasPonto(userID);
+            Alert.alert('Aviso', 'Nenhum ponto para sincronizar!');
+          }
+        } else {
+          console.error("Erro na sincronização:", response.data.message);
+        }
+      } catch (error: any) {
+        // Se o erro for 404, trata como resposta vazia em vez de erro
+        if (error.response?.status === 404) {
+          //console.log("Nenhum ponto encontrado para sincronizar (404).");
+          Alert.alert('Aviso', 'Nenhum ponto para sincronizar!');
+        } else {
+          console.error("Erro na sincronização:", error);
+        }
+      }
+
+      carregarPontos();
+    };
+
+    sincronizarBatidas();
+  }, [conectadoWifi]);
+
+  useEffect(() => {
+    async function obterLocalizacao() {
+      if (location) {
+        const resultado = await buscarLocalizacaoAtual(location);
+        setLocalizacao(resultado);
+      }
+    }
+
+    obterLocalizacao();
+  }, [location, user]);
 
   // const empresa = user?.empresa || null;
-  const empresa = user?.response[0].empresa ?? '';
-  const username = user?.response[0].username ?? '';
-  const escala = user?.response[0].escala ?? '';
-  const modeloBatida = user?.response[0].modeloBatida ?? '';
-  const userID = user?.response[0].id ?? '';
+  const empresa = user?.empresa ?? '';
+  const empdes = user?.empdes ?? '';
+  const cliente = user?.cliente ?? '';
+  const localemp = user?.localemp ?? '';
+
+  const username = user?.username ?? '';
+  const escala = user?.escala ?? '';
+  const modeloBatida = user?.modeloBatida ?? 0;
 
   function padNumber(num: number) {
     return num.toString().padStart(5, '0');
   }
 
-  const userIDFormat = padNumber(userID);
+  async function buscarLocalizacaoAtual(location: {
+    latitude: number;
+    longitude: number;
+  }) {
+    if (!cliente) return 'Indefinida!';
 
-  async function baterPonto(dataFormatada: string, tipo: number) {
-
-    // console.log(dataFormatada);
-    if (!location) {
-      Alert.alert("Erro", "Localização não disponível");
-      return;
-    }
     const latitudeStr = location.latitude.toString();
     const longitudeStr = location.longitude.toString();
-    const response = await userDatabase.baterPonto(
-      userIDFormat,
-      username,
-      empresa,
-      tipo,
-      dataFormatada,
-      getDayOfWeek(new Date()),
-      latitudeStr,
-      longitudeStr,
-      new Date(),
-      new Date()
-    );
 
-    if (response) {
-      Alert.alert(
-        "Aviso",
-        response,
-        [
-          {
-            text: "Voltar",
-            onPress: () => console.log("Sincronização cancelada"),
-            style: "cancel"
-          },
-          {
-            text: "Sincronizar",
-            onPress: () => sincronizarPonto()
-          }
-        ],
-        { cancelable: true }
-      );
+    try {
+      const verificarDistancia = await userDatabase.verificarLocalizacao(cliente, latitudeStr, longitudeStr);
+      return verificarDistancia.isValid ? localemp : 'Indefinida!';
+    } catch (error) {
+      console.error("Erro ao verificar localização:", error);
+      return 'Indefinida!';
+    }
+  }
+
+
+  const userIDFormat = padNumber(Number(userID));
+
+  async function baterPonto(dataFormatada: Date, tipo: number): Promise<boolean> {
+    if (!location) {
+      Alert.alert("Erro", "Localização não disponível. Aguarde...");
+      return false;
+    }
+
+    const latitudeStr = location.latitude.toString();
+    const longitudeStr = location.longitude.toString();
+
+    const verificarDistancia = await userDatabase.verificarLocalizacao(cliente, latitudeStr, longitudeStr);
+
+    if (!verificarDistancia.isValid) {
+      return new Promise((resolve) => {
+        Alert.alert(
+          "Aviso",
+          verificarDistancia.message,
+          [
+            {
+              text: "Voltar",
+              onPress: () => {
+                //console.log("Registro de Ponto Cancelado!");
+                resolve(false); // Retorna false se o usuário cancelar
+              },
+              style: "cancel"
+            },
+            {
+              text: "Continuar",
+              onPress: async () => {
+                //console.log("DEU CERTO!");
+                const resultado = await baterPontoNoBanco(dataFormatada, tipo);
+                resolve(resultado); // Retorna o resultado da inserção no banco
+              }
+            }
+          ],
+          { cancelable: false }
+        );
+      });
     } else {
-      return null;
+      return await baterPontoNoBanco(dataFormatada, tipo);
     }
 
 
   }
 
+  async function baterPontoNoBanco(dataFormatada: Date, tipo: number): Promise<boolean> {
+
+    const latitudeStr = location?.latitude.toString() ?? '';
+    const longitudeStr = location?.longitude.toString() ?? '';
+
+    const verificarDistancia = await userDatabase.verificarLocalizacao(cliente, latitudeStr, longitudeStr);
+
+    const distancia = verificarDistancia.distancia ?? null;
+
+    const response = await userDatabase.baterPonto(
+      userIDFormat,
+      username,
+      empresa,
+      cliente,
+      tipo,
+      dataFormatada,
+      distancia ?? 0,
+      getDayOfWeek(new Date()),
+      location.latitude.toString(),
+      location.longitude.toString(),
+      new Date(),
+      new Date()
+    );
+
+    if (response.isSuccess) {
+      return new Promise((resolve) => {
+        Alert.alert(
+          "Aviso",
+          response.message,
+          [
+            {
+              text: "Ok",
+              onPress: () => {
+                //// console.log("Sincronização cancelada");
+                resolve(true); // Mesmo cancelando a sincronização, o ponto foi batido
+              },
+              // style: "cancel"
+            },
+            // {
+            //   text: "Sincronizar",
+            //   onPress: () => {
+            //     sincronizarPonto();
+            //     resolve(true); // O ponto foi batido e a sincronização começou
+            //   }
+            // }
+          ],
+          { cancelable: true }
+        );
+      });
+    }
+
+    return false; // Se a inserção falhou
+  }
+
+
+
   const handleBaterPonto = async () => {
+
     if (isButtonDisabled) {
       // Se o botão está desabilitado, não faça nada
       return;
@@ -245,25 +410,35 @@ const PontoScreen = () => {
       }
     }
 
-    const timeZone = 'America/Sao_Paulo';
+    // const timeZone = 'America/Sao_Paulo';
     const date = new Date();
+    const dateTimeZoneBr = new Date(date.setHours(date.getHours() - 3));
 
     // const tipo = 0;
 
     // Busca os pontos registrados
     const ultimoPonto: any = await userDatabase.buscarUltimoPonto(userIDFormat);
 
-    console.log("Ultimo Ponto: " + ultimoPonto);
+    //console.log("Ultimo Ponto: " + ultimoPonto);
 
     // Verifica se existem pontos registrados
     if (ultimoPonto === null) {
 
       setTipo(1);
-      await baterPonto(formatInTimeZone(date, timeZone, 'yyyy-MM-dd HH:mm:ss'), tipo);
+      const response = await baterPonto(dateTimeZoneBr, tipo);
+      if (!response) {
+        return;
+      }
       setUltimoPontoReg(true);
-      setUltimoPontoHor([formatInTimeZone(date, timeZone, 'HH:mm:ss')]);
 
-      console.log("Ponto registrado!");
+      setUltimoPontoHor(
+        Array.isArray(ultimoPonto)
+          ? [
+            dateTimeZoneBr, // Novo ponto sempre no topo
+            ...ultimoPonto.map(p => p.data) // Depois os anteriores
+          ]
+          : [dateTimeZoneBr]
+      );
       return;
     }
 
@@ -272,49 +447,66 @@ const PontoScreen = () => {
     if (ultimoPonto.length > 0) {
 
       setTipo(ultimoPonto.length + 1);
+      const agora = new Date();
+      const dateTimeZoneBr = new Date(agora.getTime() - 3 * 60 * 60 * 1000); // Ajuste para fuso horário do Brasil
 
-      const ultimoPontoMaisRecente = new Date(Date.parse(ultimoPonto[0].data));
-      // Converte a string da API para objeto Date
+      const ultimoPontoMaisRecenteUTC = new Date(ultimoPonto[0].data); // aqui converte corretamente
+      const ultimoPontoMaisRecente = new Date(ultimoPontoMaisRecenteUTC.getTime() - 3 * 60 * 60 * 1000);
+      const dataLimite = new Date(ultimoPontoMaisRecente.getTime() + 60 * 1000); // +1 min
 
-      // Adiciona um minuto ao último ponto registrado para definir o horário limite
-      const dataLimite = new Date(ultimoPontoMaisRecente.getTime() + 60 * 1000); // Adiciona 1 minuto
+      //// console.log(ultimoPontoMaisRecente)
+      //// console.log("Data BR atual:", dateTimeZoneBr.toLocaleString("pt-BR"));
+      //// console.log("Último ponto (corrigido):", ultimoPontoMaisRecente.toLocaleString("pt-BR"));
+      //// console.log("Data limite:", dataLimite.toLocaleString("pt-BR"));
+      //// console.log(dateTimeZoneBr)
+      //// console.log(dataLimite)
 
-      console.log("Último ponto mais recente:", ultimoPontoMaisRecente);
-      console.log("Data limite:", dataLimite);
-
-      // A comparação é feita diretamente entre os objetos Date
-      if (date < dataLimite) {
+      if (dateTimeZoneBr < dataLimite) {
         Alert.alert("Aguarde", "Ponto já foi registrado!");
         return;
       }
 
-      // if (ultimoPonto == 3) {
 
-      // }
+
 
       if (ultimoPonto.length >= 4) {
         Alert.alert('aviso', 'Limite de batidas atigindo!');
         return;
       }
 
-      await baterPonto(formatInTimeZone(date, timeZone, 'yyyy-MM-dd HH:mm:ss'), tipo);
+      const res = await baterPonto(dateTimeZoneBr, tipo);
+
+      if (!res) {
+        return;
+      }
+
+      setUltimoPontoReg(true);
+
+
+      if (Array.isArray(ultimoPonto)) {
+        ultimoPonto.forEach((p, i) => {
+          console.log(`p[${i}] =`, p);
+          console.log(`p.data =`, p?.data);
+        });
+      }
+      setUltimoPontoHor(
+        Array.isArray(ultimoPonto)
+          ? [
+            dateTimeZoneBr, // Novo ponto sempre no topo (já está no formato desejado?)
+            ...ultimoPonto.map(p => {
+              const dataStr = p?.data;
+              return typeof dataStr === 'string' && dataStr.length >= 19
+                ? dataStr.substring(11, 19) // Pega apenas "hh:mm:ss"
+                : '--:--:--';
+            })
+          ]
+          : [dateTimeZoneBr]
+      );
+
+
+
+      //console.log("Ponto registrado e adicionado ao estado.");
     }
-
-
-    // Se o ponto for válido para ser registrado
-    setUltimoPontoReg(true);
-
-    setUltimoPontoHor(
-      Array.isArray(ultimoPonto)
-        ? [
-          formatInTimeZone(date, timeZone, 'HH:mm:ss'), // Novo ponto sempre no topo
-          ...ultimoPonto.map(p => formatInTimeZone(p.data, timeZone, 'HH:mm:ss')) // Depois os anteriores
-        ]
-        : [formatInTimeZone(date, timeZone, 'HH:mm:ss')]
-    );
-
-
-    console.log("Ponto registrado e adicionado ao estado.");
 
   };
 
@@ -332,12 +524,8 @@ const PontoScreen = () => {
 
       for (const ponto of pontos) {
 
-        // if (typeof ponto !== "object" || ponto === null) {
-        //   console.warn("Ponto inválido encontrado:", ponto);
-        //   return;
-        // }
-        console.log(ponto.data);
-        console.log(typeof (ponto.data));
+        //console.log(ponto.data);
+        //console.log(typeof (ponto.data));
         const payload: { pontosRequest: PontoPayload[] } = {
           pontosRequest: [
             {
@@ -367,49 +555,82 @@ const PontoScreen = () => {
           ],
         };
 
-        console.log(payload);
+        //console.log(payload);
 
         const response = await api.post("/receberpontos", payload);
         if (!response.data.success) {
-          console.log(`Erro ao sincronizar ponto ID ${ponto.userId}:`, response.data.message);
+          //console.log(`Erro ao sincronizar ponto ID ${ponto.userId}:`, response.data.message);
         }
       }
 
       Alert.alert("Aviso", "Pontos Sincronizados com Sucesso!");
     } catch (error) {
-      console.log("Erro na sincronização:", error);
+      //console.log("Erro na sincronização:", error);
     }
   };
 
 
   return (
-
     <View style={styles.container}>
       <View style={styles.header}>
-        {user && (<Text style={styles.empName}> {empresa}</Text>)}
+        {user && (<Text style={styles.empName}> {empdes}</Text>)}
+        {user && (
+          <Text style={styles.welcomeMessage}>
+            Bem vindo, <Text style={styles.title}>{user ? username : "Usuário não autenticado"}</Text>!
+          </Text>
+        )}
         <Text style={styles.title}>{currentDate}</Text>
-        {user && (<Text style={styles.welcomeMessage}>Bem vindo, <Text style={styles.title}>{user ? username : "Usuário não autenticado"}</Text>!</Text>)}
+        {user && (
+          <Text style={styles.localAtual}>
+            Localização Atual: <Text style={styles.title}>{localizacao ?? 'Carregando...'}</Text>
+          </Text>
+        )}
+        {
+          localizacao === 'Indefinida!' && (
+            <>
+              <Text style={{ fontWeight: 'bold', color: '#1e3a8a', fontSize: 16 }}>
+                {`Latitude: ${location?.latitude}`}
+              </Text>
+              <Text style={{ fontWeight: 'bold', color: '#1e3a8a', fontSize: 16 }}>
+                {`Longitude: ${location?.longitude}`}
+              </Text>
+            </>
+          )
+
+        }
+        {/* <MonitorConexao /> */}
       </View>
 
+      <RelogioHoraAtual />
+
       <View style={styles.containerCenter}>
-        <Text style={styles.text}>Bater Ponto</Text>
+        {/* <Text style={styles.text}>Bater Ponto</Text> */}
         <TouchableOpacity
           onPress={handleBaterPonto}
           style={[
             styles.digitalButton,
-            isButtonDisabled && styles.buttonDisabled // Aplica o estilo buttonDisabled se o botão estiver desabilitado
+            isButtonDisabled && styles.buttonDisabled
           ]}
-          disabled={isButtonDisabled} // Desabilita o toque no botão baseado no estado
+          disabled={isButtonDisabled}
         >
           <Image source={require('../assets/digital.png')} style={styles.image} />
         </TouchableOpacity>
+
         {ultimoPontoReg ? (
           <View style={styles.ultimoPontoWrapper}>
             <Text style={styles.ultimoPontoTitle}>Últimos Pontos:</Text>
-            {ultimoPontoHor && ultimoPontoHor.length > 0 ? (
-              ultimoPontoHor.map((horario, index) => (
-                <Text key={index} style={styles.ultimoPontoContainer}>- {horario.split(":").slice(0, 2).join(":")}</Text>
-              ))
+            {ultimoPontoHor.length > 0 ? (
+              ultimoPontoHor.map((horario, index) => {
+                //console.log("horario:", horario, "tipo:", typeof horario);
+
+                return (
+                  <Text key={index} style={styles.ultimoPontoContainer}>
+                    {typeof horario === "string"
+                      ? horario.split(":").slice(0, 2).join(":")
+                      : new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                  </Text>
+                );
+              })
             ) : (
               <Text style={styles.ultimoPontoContainer}>Nenhum ponto registrado</Text>
             )}
@@ -420,13 +641,11 @@ const PontoScreen = () => {
           </View>
         )}
 
-
-
-
-        {mensagemRetorno !== '' && <Text style={styles.mensagemRetorno}>{mensagemRetorno}</Text>}
+        {/* {mensagemRetorno !== '' && <Text style={styles.mensagemRetorno}>{mensagemRetorno}</Text>} */}
       </View>
     </View>
   );
+
 };
 
 const styles = StyleSheet.create({
@@ -440,14 +659,15 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    marginTop: -8,
+    padding: 10,
   },
   text: {
     fontSize: 20,
     marginBottom: 20,
   },
   digitalButton: {
-    marginBottom: 56,
+    marginBottom: 26,
     //backgroundColor: '#FF6347',
     backgroundColor: '#2196F3',
     borderRadius: 50,
@@ -466,8 +686,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#CCCCCC', // Cor de fundo quando o botão está desabilitado
   },
   image: {
-    width: 100,
-    height: 100,
+    width: 130,
+    height: 130,
     borderRadius: 50, // Ajuste para que a imagem também tenha bordas arredondadas
   },
   ultimoPontoContainer: {
@@ -482,9 +702,9 @@ const styles = StyleSheet.create({
   },
   ultimoPontoWrapper: {
     // backgroundColor: "#fff",
-    padding: 15,
+    padding: 2,
     borderRadius: 10,
-    marginTop: 15,
+    marginTop: 2,
     // shadowColor: "#000",
     // shadowOffset: { width: 0, height: 2 },
     // shadowOpacity: 0.2,
@@ -494,7 +714,7 @@ const styles = StyleSheet.create({
   ultimoPontoTitle: {
     fontSize: 18,
     fontWeight: "bold",
-    marginBottom: 10,
+    marginBottom: 4,
     textAlign: "center",
     // color: "#444",
   },
@@ -524,9 +744,16 @@ const styles = StyleSheet.create({
     fontFamily: 'sans-serif',
     padding: 16
   },
+  localAtual: {
+    margin: 5,
+    fontSize: 18,
+    fontFamily: 'sans-serif',
+    padding: 16
+  },
   content: {
     flex: 1,
   },
 });
 
+export default PontoScreen;
 export default PontoScreen;

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Button, Alert, Modal, TouchableOpacity, TextInput, Platform } from 'react-native';
+import { View, Text, StyleSheet, Button, Alert, Modal, TouchableOpacity, TextInput, Platform, ActivityIndicator } from 'react-native';
 import Timeline from 'react-native-timeline-flatlist';
 import { useAuth } from '../contexts/AuthContext';
 import MapView, { Marker } from 'react-native-maps';
@@ -9,6 +9,8 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import DropDownPicker from 'react-native-dropdown-picker';
 import { MaterialIcons } from '@expo/vector-icons';
 import api from '@/config/api';
+import { formatInTimeZone } from 'date-fns-tz';
+import { useUserDatabase } from '@/database/useUserDatabase';
 
 
 interface Ponto {
@@ -32,6 +34,7 @@ const HistoricoScreen = () => {
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
   const [isConnected, setIsConnected] = useState(true);
   const [formModalVisible, setFormModalVisible] = useState(false);
+  const [formJustificativaModalVisible, setFormJustificativaModalVisible] = useState(false);
   const [titulo, setTitulo] = useState('');
   const [descricao, setDescricao] = useState('');
   const [subcategoria, setSubcategoria] = useState('');
@@ -40,6 +43,13 @@ const HistoricoScreen = () => {
   const [anexo, setAnexo] = useState<any>(null);
   const [showDatePickerInicio, setShowDatePickerInicio] = useState(false);
   const [showDatePickerTermino, setShowDatePickerTermino] = useState(false);
+  const [selectedData, setSelectedData] = useState<any>(null);
+  const [pontoId, setPontoId] = useState();
+  const [dataPonto, setDataPonto] = useState();
+  const [tipoPonto, setTipoPonto] = useState();
+  const [latitudePonto, setLatitudePonto] = useState();
+  const [longitudePonto, setLongitudePonto] = useState();
+  const [loading, setLoading] = useState<boolean>(true);
 
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState('');
@@ -59,7 +69,8 @@ const HistoricoScreen = () => {
 
     setTimeout(() => {
       fetchPontosUsuario();
-    }, 5000);
+      setLoading(false);
+    }, 2000);
 
     return () => unsubscribe();
   }, []);
@@ -90,21 +101,42 @@ const HistoricoScreen = () => {
         throw new Error('Resposta do servidor não é um array');
       }
 
-      const formattedPontos = pontos.map((ponto, index) => ({
-        id: ponto.id,
-        time: new Date(ponto.data).toLocaleDateString('pt-BR'),
-        // title: ponto.descricao,
-        // description: `Batido em: ${new Date(ponto.data).toLocaleString('pt-BR')}\nConsta como: ${ponto.status}`,
-        description: `Batido em: ${new Date(ponto.data).toLocaleString('pt-BR')}\n`,
-        data: ponto.data,
-        // descricao: ponto.descricao,
-        latitudeAtual: ponto.latitude,
-        longitudeAtual: ponto.longitude,
-        status: ponto.statusmsg,
-        // circleColor: ponto.tipo % 2 === 0 ? 'orange' : '#2196F3',
-        circleColor: '#2196F3',
-        lineColor: 'grey'
-      }));
+      const formattedPontos = pontos.map((ponto, index) => {
+        const data = new Date(ponto.data);
+        data.setHours(data.getHours() + 3); // Ajustando o fuso horário manualmente
+
+        const dataFormatada = data.toLocaleString('pt-BR', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false
+        });
+
+        return {
+          id: ponto.id,
+          time: data.toLocaleDateString('pt-BR'),
+          description: `Batido em: ${dataFormatada}\n`,
+          data: ponto.data,
+          tipo: ponto.tipo,
+          latitudeAtual: ponto.latitude,
+          longitudeAtual: ponto.longitude,
+          status: ponto.status,
+          statusmsg: ponto.statusmsg,
+          circleColor: ponto.status === "inconsistente" ? 'orange' : '#2196F3',
+          lineColor: 'grey',
+          timeStyle: {
+            textAlign: 'center',
+            backgroundColor: ponto.status === "inconsistente" ? 'orange' : '#2196F3',
+            color: 'white',
+            padding: 5,
+            borderRadius: 13
+          }
+        };
+      });
+
 
       setData(formattedPontos);
 
@@ -119,12 +151,34 @@ const HistoricoScreen = () => {
     setModalVisible(true);
   };
 
+  const handleRetificar = (data: any) => {
+    console.log(data);
+    setPontoId(data.id);
+    setDataPonto(data.data);
+    setTipoPonto(data.tipo);
+    setLatitudePonto(data.latitudeAtual);
+    setLongitudePonto(data.longitudeAtual);
+    setFormModalVisible(true);
+  };
+
   const renderDetail = (rowData: any) => {
+    const color = rowData.status === "inconsistente" ? 'orange' : 'rgb(45,156,219)';
+    console.log(rowData.status)
     const title = <Text style={styles.title}>{rowData.title}</Text>;
     const desc = (
       <View style={styles.descriptionContainer}>
-        <Text style={styles.textDescription}>{rowData.description}</Text>
-        <Button title="Info" onPress={() => handleActionPress(rowData)} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+          <Text style={styles.textDescription}>{rowData.description}</Text>
+          <TouchableOpacity onPress={() => handleActionPress(rowData)} style={{ marginLeft: 10 }}>
+            <MaterialIcons name="info" size={24} color={color} />
+          </TouchableOpacity>
+        </View>
+
+        {isConnected && rowData.status === "inconsistente" && (
+          <TouchableOpacity style={[styles.btnRetificarPonto]} onPress={() => handleRetificar(rowData)}>
+            <Text style={{ textAlign: 'center', color: '#FFF', fontSize: 16 }}>Retificar</Text>
+          </TouchableOpacity>
+        )}
       </View>
     );
 
@@ -141,62 +195,81 @@ const HistoricoScreen = () => {
       const result = await DocumentPicker.getDocumentAsync({
         type: ['image/*', 'application/pdf'],
       });
-      // if (result.type === 'success') {
-      //   setAnexo(result);
-      // }
+      if (result.type === 'success') {
+        setAnexo(result);
+      }
     } catch (err) {
       console.error(err);
     }
   };
 
   const handleFormSubmit = async () => {
-    if (!titulo || !descricao || !subcategoria || !dataInicio || !dataTermino) {
+    if (!titulo || !descricao || !subcategoria) {
       Alert.alert('Erro', 'Todos os campos são obrigatórios.');
       return;
     }
 
-    const formData = new FormData();
-    formData.append('userId', user.userId);
-    formData.append('title', titulo);
-    formData.append('descript', descricao);
-    formData.append('subcategoria', subcategoria);
-    formData.append('data_inicio', dataInicio.toISOString());
-    formData.append('data_termino', dataTermino.toISOString());
+    try {
+      if (isConnected) {
+        const dataToSend = {
+          data: dataPonto,
+          tipo: tipoPonto,
+          latitude: latitudePonto,
+          longitude: longitudePonto,
+          requisicao: {
+            user_id: userID,
+            titulo,
+            descricao,
+            subcategoria,
+            anexo: anexo ?? null,
+            data_inicio: dataInicio,
+            data_termino: dataTermino
+          }
+        };
 
-    if (anexo) {
-      formData.append('anexo', {
-        uri: anexo.uri,
-        name: anexo.name,
-        type: anexo.mimeType,
-      } as any);
+        const response = await api.post('/retificar', dataToSend);
+
+        if (!response.data.success) {
+          throw new Error('Erro ao enviar a solicitação de retificação');
+        }
+
+        Alert.alert('Sucesso', 'Solicitação de retificação enviada com sucesso.');
+        setFormModalVisible(false);
+        setTitulo('');
+        setDescricao('');
+        setSubcategoria('');
+        setDataInicio(null);
+        setDataTermino(null);
+        setAnexo(null);
+      } else {
+        const useDatabase = await useUserDatabase();
+        const response = await useDatabase.retificarPontoLocal(
+          dataPonto ?? new Date(),
+          tipoPonto ?? null,
+          latitudePonto ?? '',
+          longitudePonto ?? '',
+          userID,
+          pontoId ?? null,
+          titulo,
+          descricao,
+          anexo,
+          subcategoria,
+          dataInicio ?? new Date(),
+          dataTermino ?? new Date()
+        );
+
+        if (!response) {
+          console.log('Não foi possivel gravar a retificação localmente')
+        }
+
+        Alert.alert('Retificação Gravada com Sucesso!');
+      }
+    } catch (error) {
+      console.error(error);
+      Alert.alert('Erro', error instanceof Error ? error.message : 'Erro desconhecido');
     }
-
-    // try {
-    //   const response = await fetch('https://apispiceponto.sistemasgeo.com.br/retificar', {
-    //     method: 'POST',
-    //     headers: {
-    //       'Content-Type': 'multipart/form-data',
-    //     },
-    //     body: formData,
-    //   });
-
-    //   if (!response.ok) {
-    //     throw new Error('Erro ao enviar a solicitação de retificação');
-    //   }
-
-    //   Alert.alert('Sucesso', 'Solicitação de retificação enviada com sucesso.');
-    //   setFormModalVisible(false);
-    //   setTitulo('');
-    //   setDescricao('');
-    //   setSubcategoria('');
-    //   setDataInicio(null);
-    //   setDataTermino(null);
-    //   setAnexo(null);
-    // } catch (error) {
-    //   console.error(error);
-    //   Alert.alert('Erro', error instanceof Error ? error.message : 'Erro desconhecido');
-    // }
   };
+
 
   const handleDateChangeInicio = (event: any, selectedDate: Date | undefined) => {
     setShowDatePickerInicio(Platform.OS === 'ios');
@@ -220,33 +293,62 @@ const HistoricoScreen = () => {
     );
   }
 
+  if (loading) {
+    return (
+      <Modal visible={true} transparent={true} animationType="fade">
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <ActivityIndicator size="large" color="#007AFF" />
+            <Text style={styles.loadingText}>Carregando Histórico de Batidas...</Text>
+          </View>
+        </View>
+      </Modal>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      {isConnected && (
-        <>
-          <Button title="Retificar" onPress={() => setFormModalVisible(true)} style={styles.retificarButton} />
-        </>
-      )}
-      <Timeline
-        data={data}
-        circleSize={20}
-        circleColor='rgb(45,156,219)'
-        circleStyle={{ marginTop: 10 }}
-        lineColor='rgb(45,156,219)'
-        timeContainerStyle={{ minWidth: 52, marginTop: 5 }}
-        timeStyle={{
-          textAlign: 'center',
-          backgroundColor: '#2196F3',
-          color: 'white',
-          padding: 5,
-          borderRadius: 13
-        }}
-        descriptionStyle={{ color: 'gray' }}
 
-        renderDetail={renderDetail}
-        style={{ paddingTop: 5 }}
-      //columnFormat='single-column-right'
-      />
+      {isConnected && (
+        <TouchableOpacity style={styles.btnJustificar} onPress={() => setFormJustificativaModalVisible(true)}>
+          <Text style={{ textAlign: 'center', color: '#FFF', fontSize: 16 }}>Emitir Justificativa</Text>
+        </TouchableOpacity>
+      )}
+      {
+        data.length > 0 && !loading ? (
+          <Timeline
+            data={data}
+            circleSize={20}
+            circleStyle={{ marginTop: 10 }}
+            lineColor="rgb(45,156,219)"
+            timeContainerStyle={{ minWidth: 52, marginTop: 5 }}
+            descriptionStyle={{ color: 'gray' }}
+            renderDetail={renderDetail}
+            renderTime={(rowData) => (
+              <Text
+                style={{
+                  textAlign: 'center',
+                  backgroundColor: rowData.status === 'inconsistente' ? 'orange' : '#2196F3',
+                  color: 'white',
+                  marginTop: 8,
+                  height: 32,
+                  padding: 5,
+                  borderRadius: 13,
+                }}
+              >
+                {rowData.time}
+              </Text>
+            )}
+            style={{ paddingTop: 5 }}
+          />
+
+        ) : (
+          <View style={styles.centeredView}>
+            <Text style={styles.offlineText}>Não foi possivel resgatar suas Batidas</Text>
+          </View>
+        )
+      }
+
 
       {selectedItem && (
         <Modal
@@ -289,7 +391,7 @@ const HistoricoScreen = () => {
                   />
                 </MapView>
               </View>
-              <Text style={styles.status}>Status: {selectedItem.status}</Text>
+              <Text style={styles.status}>Status: {selectedItem.statusmsg}</Text>
 
               <TouchableOpacity
                 style={[styles.button, styles.buttonClose]}
@@ -315,6 +417,92 @@ const HistoricoScreen = () => {
           <View style={styles.centeredView}>
             <View style={styles.modalView}>
               <Text style={styles.modalTitle}>Solicitar Retificação</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Título"
+                value={titulo}
+                onChangeText={setTitulo}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Descrição"
+                value={descricao}
+                onChangeText={setDescricao}
+              />
+
+              {/* <View style={styles.datePickerContainer}>
+                <TouchableOpacity onPress={() => setShowDatePickerInicio(true)} style={styles.datePicker}>
+                  <Text>{dataInicio ? dataInicio.toLocaleDateString('pt-BR') : 'Data de Início'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setShowDatePickerTermino(true)} style={styles.datePicker}>
+                  <Text>{dataTermino ? dataTermino.toLocaleDateString('pt-BR') : 'Data de Término'}</Text>
+                </TouchableOpacity>
+              </View> */}
+              {showDatePickerInicio && (
+                <DateTimePicker
+                  value={dataInicio || new Date()}
+                  mode="date"
+                  display="default"
+                  onChange={handleDateChangeInicio}
+                />
+              )}
+              {showDatePickerTermino && (
+                <DateTimePicker
+                  value={dataTermino || new Date()}
+                  mode="date"
+                  display="default"
+                  onChange={handleDateChangeTermino}
+                />
+              )}
+              <TouchableOpacity onPress={handleFilePicker} style={styles.filePicker}>
+                <Text>Selecionar Anexo</Text>
+              </TouchableOpacity>
+              {anexo && (
+                <View style={styles.anexoContainer}>
+                  <MaterialIcons name="attachment" size={24} color="black" />
+                  <Text style={styles.anexoText}>{anexo.name}</Text>
+                </View>
+              )}
+              <DropDownPicker
+                open={open}
+                value={subcategoria}
+                items={items}
+                setOpen={setOpen}
+                setValue={setSubcategoria}
+                setItems={setItems}
+                placeholder="Selecione a Subcategoria"
+                containerStyle={{ height: 40, marginBottom: 10 }}
+              />
+
+              <TouchableOpacity
+                style={[styles.button, styles.buttonClose]}
+                onPress={handleFormSubmit}>
+                <Text style={styles.textStyle}>Confirmar</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.button, styles.buttonClose]}
+                onPress={() => setFormModalVisible(!formModalVisible)}>
+                <Text style={styles.textStyle}>Fechar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+
+
+      {formJustificativaModalVisible && (
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={formJustificativaModalVisible}
+          onRequestClose={() => {
+            setFormJustificativaModalVisible(!formJustificativaModalVisible);
+          }}>
+          <View style={styles.centeredView}>
+            <View style={styles.modalView}>
+              <Text style={styles.modalTitle}>Emitir Justificativa</Text>
               <TextInput
                 style={styles.input}
                 placeholder="Título"
@@ -380,7 +568,7 @@ const HistoricoScreen = () => {
 
               <TouchableOpacity
                 style={[styles.button, styles.buttonClose]}
-                onPress={() => setFormModalVisible(!formModalVisible)}>
+                onPress={() => setFormJustificativaModalVisible(!formJustificativaModalVisible)}>
                 <Text style={styles.textStyle}>Fechar</Text>
               </TouchableOpacity>
             </View>
@@ -415,6 +603,7 @@ const styles = StyleSheet.create({
     paddingRight: 50
   },
   textDescription: {
+    fontSize: 14,
     marginBottom: 10,
     color: 'gray'
   },
@@ -521,6 +710,51 @@ const styles = StyleSheet.create({
     fontSize: 18,
     textAlign: 'center',
     color: 'red',
+  },
+  btnInfoPonto: {
+    backgroundColor: '#2196F3',
+    borderRadius: 8,
+    height: 28,
+    width: '50%',
+    alignSelf: 'flex-end',
+  },
+  btnRetificarPonto: {
+    // backgroundColor: '#2196F3',
+    backgroundColor: 'orange',
+    marginTop: 8,
+    borderRadius: 8,
+    height: 28,
+    width: '40%',
+    alignSelf: 'flex-end',
+  },
+  btnJustificar: {
+    backgroundColor: '#2196F3',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 8,
+    borderRadius: 8,
+    height: 36,
+    width: '100%',
+    alignSelf: 'flex-end',
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    padding: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    elevation: 10,
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#333',
   },
 });
 

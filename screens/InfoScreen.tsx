@@ -19,14 +19,11 @@ const InfoScreen = () => {
 
   console.log(userData);
   // Usa destructuring para pegar os valores, evitando repetição
-  const {
-    username,
-    empresa,
-    cliente,
-    escala,
-    cargo
-  } = userData;
-
+  const empresa = user?.empresa ?? '';
+  const cargo = user?.cliente ?? '';
+  const username = user?.username ?? '';
+  const escala = user?.funcoes?.escala ?? '';
+  const localemp = user?.funcoes?.setor ?? '5X2';
 
   let diaDaSemana: number;
 
@@ -112,7 +109,7 @@ const InfoScreen = () => {
           </Text>
           <Text style={styles.cardText}>Empresa: <Text style={styles.title}>{empresa}</Text></Text>
           <Text style={styles.cardText}>Cargo: <Text style={styles.title}>{cargo}</Text></Text>
-          <Text style={styles.cardText}>Setor: <Text style={styles.title}>{cliente}</Text></Text>
+          <Text style={styles.cardText}>Setor: <Text style={styles.title}>{localemp}</Text></Text>
           <Text style={styles.cardText}>Escala: <Text style={styles.title}>{escala}</Text></Text>
           {/* <Text style={styles.cardText}>Observação: <Text style={styles.title}>{observacao}</Text></Text> */}
 

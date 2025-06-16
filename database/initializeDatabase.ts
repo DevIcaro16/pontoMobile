@@ -43,7 +43,7 @@ export async function initializeDatabase(database: SQLiteDatabase) {
 
         -- Tabela de usuários (spi_user)
         CREATE TABLE IF NOT EXISTS spi_user (
-            id INTEGER PRIMARY KEY ,
+            id INTEGER PRIMARY KEY DEFAULT 0,
             empresa TEXT NOT NULL,
             username TEXT NOT NULL,
             password TEXT NOT NULL,
@@ -78,11 +78,44 @@ export async function initializeDatabase(database: SQLiteDatabase) {
             FOREIGN KEY (cliente) REFERENCES spi_cli(chave) ON DELETE RESTRICT ON UPDATE RESTRICT
         );
 
+        -- Tabela de Parâmetros (spi_par)
+        CREATE TABLE IF NOT EXISTS spi_par(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            empresa_id INTEGER NOT NULL,
+            empresa_chave VARCHAR(255) NOT NULL,
+            empresa_nome VARCHAR(255) NOT NULL,
+            batida_automatica VARCHAR(255),
+            tolerancia_cod CHAR(3),
+            cerca_cod CHAR(3),
+            createdAt DATETIME DEFAULT CURRENT_TIMESTAMPL,
+            updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS spi_req (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            user_mat VARCHAR(20),
+            adm_id INTEGER,
+            ponto_id INTEGER,
+            status VARCHAR(255),
+            titulo VARCHAR(255),
+            descricao TEXT,
+            resposta TEXT,
+            anexo VARCHAR(255),
+            categoria VARCHAR(255),
+            subcategoria VARCHAR(255),
+            adm_name VARCHAR(100),
+            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+            empresa VARCHAR(200),
+            data_inicio DATE,
+            data_termino DATE
+        );
 
 
         -- Tabela de marcações (spi_pon)
         CREATE TABLE IF NOT EXISTS spi_pon (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id INTEGER PRIMARY KEY,
             userId INTEGER NOT NULL,
             username varchar(255) NOT NULL,
             empresa varchar(255) NOT NULL,
@@ -104,7 +137,8 @@ export async function initializeDatabase(database: SQLiteDatabase) {
             modeloBatida INTEGER DEFAULT NULL,
             statusmsg varchar(200) DEFAULT 'OK',
             foto_path varchar(240) DEFAULT 'foto.png',
-            status_cod INTEGER DEFAULT NULL
+            status_cod INTEGER DEFAULT NULL,
+            retflg CHAR(1) DEFAULT ''
         );
     `);
 }

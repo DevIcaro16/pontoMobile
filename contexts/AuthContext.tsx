@@ -42,9 +42,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
 
     const loginAuth = (userData: any) => {
-        console.log("Login realizado:", userData);
-        setUser(userData);
-        AsyncStorage.setItem("user", JSON.stringify(userData));
+        // console.log("Login realizado:", userData.response.data.user);
+        setUser(userData.response.data.user);
+        AsyncStorage.setItem("user", JSON.stringify(userData.response.data.user));
     };
 
     // const logout = async () => {

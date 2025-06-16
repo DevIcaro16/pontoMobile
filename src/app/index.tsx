@@ -2,36 +2,69 @@ import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { AuthProvider, useAuth } from '../../contexts/AuthContext';
+import NetInfo from '@react-native-community/netinfo';
 import PontoScreen from '@/screens/PontoScreen';
 import LoginScreen from '@/screens/LoginScreen';
 import UserTabNavigation from '@/components/UserTabNavigation';
-import { View, Text, Modal, ActivityIndicator, ToastAndroid, StyleSheet } from 'react-native';
+import { View, Text, Modal, ActivityIndicator, ToastAndroid, StyleSheet, Alert } from 'react-native';
 import api from '@/config/api';
-import { useUserDatabase } from '@/database/useUserDatabase';
+import { getDatabase, useUserDatabase } from '@/database/useUserDatabase';
 
 const Stack = createStackNavigator();
 
 const AuthNavigation = () => {
     const { user } = useAuth();
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [loading, setLoading] = useState(true);
     const [apiVersion, setApiVersion] = useState("");
+    const [isConnected, setIsConnected] = useState<boolean>(true);
     const [dadosEmpresaSincronia, setDadosEmpresaSincronia] = useState([]);
     const [dadosSetoresSincronia, setDadosSetoresSincronia] = useState([]);
     const [dadosFuncoesSincronia, setDadosFuncoesSincronia] = useState([]);
     const [dadosUsuariosSincronia, setDadosUsuariosSincronia] = useState([]);
+    const [dadosParametrosSincronia, setDadosParametrosSincronia] = useState([]);
+    const [dadosRequisicoesSincronia, setDadosRequisicoesSincronia] = useState([]);
 
+    const userID = user?.id || user?.response?.[0]?.id;
+    console.log(userID);
+
+    // Função para sincronizar batidas (agora chamada dentro de useEffect)
+    // const sincronizarBatidas = async (userId: number) => {
+    //     try {
+    //         const unsubscribe = NetInfo.addEventListener(state => {
+    //             setIsConnected(state.isConnected ?? false);
+    //         });
+
+    //         if (!isConnected) return;
+
+    //         const response = await api.post("/sincronizarBatidas", {
+    //             userId: userId
+    //         });
+
+    //         console.log(response.data.pontos);
+
+    //         const useDatabase = useUserDatabase();
+
+    //         const puxarPontos = await useDatabase.registrarBatidasPonto(response.data.pontos);
+
+    //         if (puxarPontos.isSuccess) {
+    //             Alert.alert('Aviso', puxarPontos.message);
+    //         }
+
+    //     } catch (error) {
+    //         console.log(error);
+    //     }
+    // };
+
+    // Fetch de versão da API e sincronização inicial
     useEffect(() => {
         const fetchApiVersion = async () => {
             try {
-
                 ToastAndroid.show("Verificando versão da API...", ToastAndroid.SHORT);
-                //Validado com Sr.Sérgio -> 26/03
-
                 const response = await api.get("/apiversion");
 
                 if (response.data.success) {
                     console.log("Conectado com a Versão da API");
+                    // setLoading(false)
                     setApiVersion(response.data.apiversion);
                     ToastAndroid.show(`API Versão: ${response.data.apiversion}`, ToastAndroid.SHORT);
                 } else {
@@ -43,18 +76,20 @@ const AuthNavigation = () => {
         };
 
         const fetchSincronia = async () => {
-            const useDatabase = useUserDatabase();
+            // const useDatabase = useUserDatabase();
             try {
                 ToastAndroid.show("Aguarde, sincronizando com a base de dados...", ToastAndroid.SHORT);
 
                 const response = await api.get("/sincronizar");
+                console.log("SINCRONIA: " + response.data.success);
 
                 if (response.data.success) {
                     setDadosEmpresaSincronia(response.data.empresas);
                     setDadosSetoresSincronia(response.data.clientes);
                     setDadosFuncoesSincronia(response.data.funcoes);
                     setDadosUsuariosSincronia(response.data.users);
-                    ToastAndroid.show(`Sincronia Realizada!`, ToastAndroid.SHORT);
+                    setDadosParametrosSincronia(response.data.parametros);
+                    ToastAndroid.show("Sincronia Realizada!", ToastAndroid.SHORT);
                 } else {
                     ToastAndroid.show("Erro ao tentar sincronizar com a base", ToastAndroid.LONG);
                 }
@@ -63,19 +98,24 @@ const AuthNavigation = () => {
                     setLoading(false);
                 }, 5000);
                 ToastAndroid.show("Falha na conexão com a API", ToastAndroid.LONG);
-
-                await useDatabase.buscarEmpresas();
+                // await useDatabase.buscarEmpresas();
             }
         };
 
-        // Definindo o loading como true antes das requisições
         setLoading(true);
         fetchApiVersion();
         fetchSincronia();
-    }, []);
+    }, []); // ✅ Executa apenas uma vez ao montar o componente
 
+    // Sincroniza batidas apenas quando `user` muda
+    // useEffect(() => {
+    //     if (user) {
+    //         sincronizarBatidas(userID);
+    //     }
+    // }, [user]);
+
+    // Sincroniza os dados obtidos
     useEffect(() => {
-        // Certificando-se de que a sincronização é feita somente após a autenticação do usuário
         const sincronizar = async () => {
             const useDatabase = useUserDatabase();
             try {
@@ -83,28 +123,25 @@ const AuthNavigation = () => {
                 await useDatabase.sincronizarSetores(dadosSetoresSincronia);
                 await useDatabase.sincronizarFuncoes(dadosFuncoesSincronia);
                 await useDatabase.sincronizarUsuarios(dadosUsuariosSincronia);
-                console.log("DADOS DO Usuário" + dadosUsuariosSincronia);
+                await useDatabase.sincronizarParametros(dadosParametrosSincronia);
+                await useDatabase.sincronizarRequisicoes(dadosRequisicoesSincronia);
                 console.log("Sincronizado com Sucesso!");
                 setLoading(false);
             } catch (error) {
                 console.error("Erro ao sincronizar empresas:", error);
-                setLoading(false); // Certifique-se de atualizar o estado mesmo em caso de erro
+                setLoading(false);
             }
         };
 
-        if (user && dadosEmpresaSincronia.length > 0) {
-            // buscarUltimos30Pontos();
-        }
+        // if (
 
-        if (
-            dadosEmpresaSincronia.length > 0 ||
-            dadosSetoresSincronia.length ||
-            dadosFuncoesSincronia.length ||
-            dadosUsuariosSincronia.length
-        ) {
-            sincronizar();
-        }
-
+        //     (dadosEmpresaSincronia.length > 0 ||
+        //         dadosSetoresSincronia.length > 0 ||
+        //         dadosFuncoesSincronia.length > 0 ||
+        //         dadosUsuariosSincronia.length > 0)
+        // ) {
+        sincronizar();
+        // }
     }, [user, dadosEmpresaSincronia, dadosSetoresSincronia, dadosFuncoesSincronia, dadosUsuariosSincronia]);
 
     if (loading) {
@@ -130,6 +167,7 @@ const AuthNavigation = () => {
         </Stack.Navigator>
     );
 };
+
 
 
 // Estilos para o Modal de carregamento

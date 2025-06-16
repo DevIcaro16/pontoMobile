@@ -9,6 +9,8 @@ import InfoScreen from '../screens/InfoScreen'; // Supondo que este seja o camin
 import { useAuth } from '../contexts/AuthContext';//todo contexto
 import ExportarScreen from '@/screens/ExportarScreen';
 import HistoricoScreen from '@/screens/HistoricoScreen';
+import RelogioHoraAtual from './HoraAtual';
+import MonitorConexao from './MonitorConexao';
 
 
 const Tab = createBottomTabNavigator();
@@ -20,6 +22,7 @@ const UserTabNavigation = () => {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
+        headerRight: () => <MonitorConexao />,
         tabBarIcon: ({ focused, color, size }) => {
           let iconName: keyof typeof MaterialIcons.glyphMap;
 
@@ -45,7 +48,10 @@ const UserTabNavigation = () => {
         headerShown: true,
       })}
     >
-      <Tab.Screen name="Ponto" component={PontoScreen} />
+      <Tab.Screen
+        name="Ponto"
+        component={PontoScreen}
+      />
       {/* <Tab.Screen name="Exportar" component={ExportarScreen} /> */}
       <Tab.Screen name="Histórico" component={HistoricoScreen} />
       <Tab.Screen name="Info" component={InfoScreen} />

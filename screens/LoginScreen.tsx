@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, TextInput, Button, StyleSheet, Alert, Image, Text, TouchableOpacity, StatusBar } from 'react-native';
+import { TextInputMask } from 'react-native-masked-text';
 import axios from 'axios';
 import { useUserDatabase } from '@/database/useUserDatabase';
 import { useNavigation } from 'expo-router';
@@ -39,14 +40,16 @@ const LoginScreen = () => {
                 // return;
             }
 
+            const response = await api.post("/login", {
+                empresa: empresa,
+                login: username,
+                senha: password
+            });
 
-            // const response = await api.post("/login", {
-            //     empresa: empresa,
-            //     login: username,
-            //     senha: password
-            // });
+            console.log(response);
 
-            const response = await userDatabase.login(empresa, username, password);
+            // const response = await userDatabase.login(empresa, username, password);
+            // const response = await userDatabase.login("00050", "Icaro", "Irpgamerbr_17");
 
             if (!response || typeof response === "string") {
                 Alert.alert(response || "Erro desconhecido ao realizar login!");
@@ -61,15 +64,15 @@ const LoginScreen = () => {
 
         } catch (error: any) {
             if (error.response) {
-                // Erros retornados pelo servidor (ex: 400, 404, 500)
+
                 console.log("Erro da API:", error.response.data);
                 Alert.alert("Erro ao fazer login", error.response.data.message || "Tente novamente.");
             } else if (error.request) {
-                // Erro na requisição (ex: falha de conexão)
+
                 console.log("Erro na requisição:", error.request);
                 Alert.alert("Erro na conexão", "Não foi possível conectar ao servidor.");
             } else {
-                // Erros desconhecidos
+
                 console.log("Erro desconhecido:", error);
                 Alert.alert("Erro inesperado", "Ocorreu um erro inesperado.");
             }
@@ -83,12 +86,18 @@ const LoginScreen = () => {
             {/* <StatusBar backgroundColor="transparent" barStyle="dark-content" translucent /> */}
 
             <Image source={require('../assets/logo.png')} style={styles.logo} />
-            <Text style={styles.title}>Login</Text>
+            <Text style={styles.title}>Bem Vindo</Text>
 
-            <TextInput
+            <TextInputMask
+                type={'custom'}
+                options={{
+                    mask: '99999',
+                }}
                 autoCapitalize="none"
                 placeholder="Empresa"
+                keyboardType="numeric"
                 value={empresa}
+                // value="00050"
                 onChangeText={setEmpresa}
                 style={styles.input}
             />
@@ -96,7 +105,7 @@ const LoginScreen = () => {
                 autoCapitalize="none"
                 placeholder="Usuário"
                 value={username}
-                // value="ADMIN"
+                // value="Icaro"
                 onChangeText={setUsername}
                 style={styles.input}
             />
@@ -105,7 +114,7 @@ const LoginScreen = () => {
                 placeholder="Senha"
                 secureTextEntry
                 value={password}
-                // value="102030"
+                // value="Irpgamerbr_17"
                 onChangeText={setPassword}
                 style={styles.input}
             />
