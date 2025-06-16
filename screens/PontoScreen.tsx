@@ -93,7 +93,7 @@ const PontoScreen = () => {
         console.log(pontosDifUndefined);
         setUltimoPontoHor(pontosDifUndefined);
         setTipo(pontosDoDia.length + 1);
-        //console.log('setUltimoPontoHor' + pontosDoDia + "-" + pontosDoDia.length);
+        console.log('setUltimoPontoHor' + pontosDoDia + "-" + pontosDoDia.length);
       }
     } catch (error) {
       console.error("Erro ao buscar pontos diários do usuário:", error);
@@ -549,7 +549,8 @@ const PontoScreen = () => {
               escala: escala ?? null,
               modeloBatida: modeloBatida ?? null,
               statusmsg: ponto.statusmsg ?? "OK",
-              foto_path: ponto.foto_path ?? "foto.png",
+              // foto_path: ponto.foto_path ?? "foto.png",
+              foto_path: ponto.foto_path,
               status_cod: ponto.status_cod ?? null,
             },
           ],

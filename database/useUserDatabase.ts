@@ -414,7 +414,8 @@ export function useUserDatabase() {
                                 batidaServidor.escala ?? null,
                                 batidaServidor.modeloBatida ?? null,
                                 batidaServidor.statusmsg ?? "OK",
-                                batidaServidor.foto_path ?? "foto.png",
+                                // batidaServidor.foto_path ?? "foto.png",
+                                batidaServidor.foto_path,
                                 batidaServidor.status_cod ?? null,
                                 batidaServidor.retflg ?? '',
                                 batidaServidor.updatedAt,
@@ -557,6 +558,7 @@ export function useUserDatabase() {
 
 
     async function buscarPontosUsuario(userID: string) {
+        // alert(Number(userID));
         const db = await getDatabase();
         const dataAtual = new Date().toISOString().split("T")[0]; // Formato YYYY-MM-DD
 
@@ -569,7 +571,7 @@ export function useUserDatabase() {
                 LIMIT 4
             `;
 
-            const response = await db.getAllAsync<UserDatabaseProps>(query, [userID, dataAtual]);
+            const response = await db.getAllAsync<UserDatabaseProps>(query, [Number(userID), dataAtual]);
 
             console.log("Pontos do Usuário: " + response);
 

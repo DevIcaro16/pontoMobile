@@ -11,6 +11,9 @@ import { MaterialIcons } from '@expo/vector-icons';
 import api from '@/config/api';
 import { formatInTimeZone } from 'date-fns-tz';
 import { useUserDatabase } from '@/database/useUserDatabase';
+import * as FileSystem from 'expo-file-system';
+import * as ImageManipulator from 'expo-image-manipulator';
+import * as ImagePicker from 'expo-image-picker';
 
 
 interface Ponto {
@@ -20,14 +23,17 @@ interface Ponto {
   latitude: number;
   longitude: number;
   status: string;
-  // tipo: number;
+  statusmsg: string;
+  tipo: number;
+  retflg: string;
 }
 
 const HistoricoScreen = () => {
 
   const { user } = useAuth(); // Obtém o usuário do contexto
-  const userID = user?.id || user?.response[0].id;
+  const userID = user?.id ?? user?.response[0].id;
   console.log(userID);
+  // alert(userID);
   // const userID = user?.userRequest.idfuncionario || 0;
   const [data, setData] = useState<any[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
@@ -82,20 +88,15 @@ const HistoricoScreen = () => {
       const response = await api.post("/pontosdousuario", {
         userID: userID
       });
-      //   const response = await fetch('https://apispiceponto.sistemasgeo.com.br/pontos_usuario', {
-      //     method: 'POST',
-      //     headers: {
-      //       'Content-Type': 'application/json'
-      //     },
-      //     body: JSON.stringify({ userId: user?.userId })
-      //   });
+
       console.log(response.data);
+
       if (!response) {
-        // throw new Error('Erro ao buscar pontos do usuário');
         Alert.alert('Erro', 'Erro ao buscar pontos do usuário');
+        return;
       }
 
-      const pontos: Ponto[] = await response.data.pontos;
+      const pontos: Ponto[] = response.data.pontos;
 
       if (!Array.isArray(pontos)) {
         throw new Error('Resposta do servidor não é um array');
@@ -103,7 +104,7 @@ const HistoricoScreen = () => {
 
       const formattedPontos = pontos.map((ponto, index) => {
         const data = new Date(ponto.data);
-        data.setHours(data.getHours() + 3); // Ajustando o fuso horário manualmente
+        data.setHours(data.getHours() + 3); // Ajuste de fuso horário manual
 
         const dataFormatada = data.toLocaleString('pt-BR', {
           year: 'numeric',
@@ -115,6 +116,9 @@ const HistoricoScreen = () => {
           hour12: false
         });
 
+        const isRetificado = ponto.retflg === '1';
+        const baseColor = isRetificado ? 'green' : (ponto.status === "inconsistente" ? 'orange' : '#2196F3');
+
         return {
           id: ponto.id,
           time: data.toLocaleDateString('pt-BR'),
@@ -125,11 +129,13 @@ const HistoricoScreen = () => {
           longitudeAtual: ponto.longitude,
           status: ponto.status,
           statusmsg: ponto.statusmsg,
-          circleColor: ponto.status === "inconsistente" ? 'orange' : '#2196F3',
+          retflg: ponto.retflg,
+          retificado: isRetificado ? 'Retificado' : '',
+          circleColor: baseColor,
           lineColor: 'grey',
           timeStyle: {
             textAlign: 'center',
-            backgroundColor: ponto.status === "inconsistente" ? 'orange' : '#2196F3',
+            backgroundColor: baseColor,
             color: 'white',
             padding: 5,
             borderRadius: 13
@@ -137,14 +143,14 @@ const HistoricoScreen = () => {
         };
       });
 
-
       setData(formattedPontos);
 
     } catch (error) {
       console.error(error);
-      Alert.alert('Erro', error instanceof Error ? 'Não foi possivel sincronizar o histórico' : 'Erro desconhecido');
+      Alert.alert('Erro', error instanceof Error ? 'Não foi possível sincronizar o histórico' : 'Erro desconhecido');
     }
   };
+
 
   const handleActionPress = (item: any) => {
     setSelectedItem(item);
@@ -162,21 +168,33 @@ const HistoricoScreen = () => {
   };
 
   const renderDetail = (rowData: any) => {
-    const color = rowData.status === "inconsistente" ? 'orange' : 'rgb(45,156,219)';
-    console.log(rowData.status)
+    const isRetificado = rowData.retflg === '1';
+    const isInconsistente = rowData.status === "inconsistente";
+
+    const color = isRetificado ? 'green' : (isInconsistente ? 'orange' : 'rgb(45,156,219)');
+
     const title = <Text style={styles.title}>{rowData.title}</Text>;
+
     const desc = (
       <View style={styles.descriptionContainer}>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-          <Text style={styles.textDescription}>{rowData.description}</Text>
+          <Text style={styles.textDescription}>
+            {rowData.description}
+            {isRetificado ? '\n[Retificado]' : ''}
+          </Text>
           <TouchableOpacity onPress={() => handleActionPress(rowData)} style={{ marginLeft: 10 }}>
             <MaterialIcons name="info" size={24} color={color} />
           </TouchableOpacity>
         </View>
 
-        {isConnected && rowData.status === "inconsistente" && (
-          <TouchableOpacity style={[styles.btnRetificarPonto]} onPress={() => handleRetificar(rowData)}>
-            <Text style={{ textAlign: 'center', color: '#FFF', fontSize: 16 }}>Retificar</Text>
+        {isConnected && isInconsistente && !isRetificado && (
+          <TouchableOpacity
+            style={styles.btnRetificarPonto}
+            onPress={() => handleRetificar(rowData)}
+          >
+            <Text style={{ textAlign: 'center', color: '#FFF', fontSize: 16 }}>
+              Retificar
+            </Text>
           </TouchableOpacity>
         )}
       </View>
@@ -190,16 +208,117 @@ const HistoricoScreen = () => {
     );
   };
 
+  const compressAndConvertToBase64 = async (uri: string): Promise<string> => {
+    try {
+      // Comprime a imagem
+      const manipResult = await ImageManipulator.manipulateAsync(
+        uri,
+        [{ resize: { width: 800 } }], // Redimensiona para largura máxima de 800px
+        { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG } // Comprime com qualidade 70%
+      );
+
+      // Converte para base64
+      const base64 = await FileSystem.readAsStringAsync(manipResult.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      return base64;
+    } catch (error) {
+      console.error('Erro ao processar imagem:', error);
+      throw error;
+    }
+  };
+
+  const handleImagePick = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.3,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        const base64Image = result.assets[0].base64;
+        if (base64Image) {
+          // Reduzir ainda mais o tamanho da imagem
+          const compressedImage = await ImageManipulator.manipulateAsync(
+            result.assets[0].uri,
+            [{ resize: { width: 600, height: 600 } }],
+            { compress: 0.3, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+          );
+
+          if (compressedImage.base64) {
+            // Verificar o tamanho da string base64
+            const base64Size = compressedImage.base64.length;
+            console.log('Tamanho da string base64:', base64Size, 'bytes');
+
+            // Se ainda estiver muito grande, reduzir mais
+            if (base64Size > 500000) { // 500KB
+              const furtherCompressed = await ImageManipulator.manipulateAsync(
+                result.assets[0].uri,
+                [{ resize: { width: 400, height: 400 } }],
+                { compress: 0.2, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+              );
+              setAnexo(furtherCompressed.base64);
+            } else {
+              setAnexo(compressedImage.base64);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao selecionar imagem:', error);
+      Alert.alert('Erro', 'Não foi possível selecionar a imagem');
+    }
+  };
+
   const handleFilePicker = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: ['image/*', 'application/pdf'],
       });
-      if (result.type === 'success') {
-        setAnexo(result);
+
+      if (result.assets && result.assets[0]) {
+        const file = result.assets[0];
+
+        // Verifica se é uma imagem
+        if (file.mimeType?.startsWith('image/')) {
+          // Comprime a imagem com qualidade melhor
+          const manipResult = await ImageManipulator.manipulateAsync(
+            file.uri,
+            [{ resize: { width: 800 } }], // Redimensiona para largura máxima de 800px
+            { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG } // Comprime com qualidade 70%
+          );
+
+          // Converte para base64
+          const base64 = await FileSystem.readAsStringAsync(manipResult.uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+
+          // Verifica o tamanho do base64 (limite de 5MB para text)
+          if (base64.length > 5000000) { // Aproximadamente 5MB em base64
+            Alert.alert(
+              'Arquivo muito grande',
+              'A imagem selecionada é muito grande. Por favor, selecione uma imagem menor.'
+            );
+            return;
+          }
+
+          setAnexo({
+            ...file,
+            base64: base64
+          });
+        } else {
+          Alert.alert(
+            'Tipo de arquivo não suportado',
+            'Por favor, selecione apenas imagens.'
+          );
+        }
       }
     } catch (err) {
       console.error(err);
+      Alert.alert('Erro', 'Não foi possível processar o arquivo');
     }
   };
 
@@ -210,6 +329,7 @@ const HistoricoScreen = () => {
     }
 
     try {
+      console.log('ANEXO: ' + anexo)
       if (isConnected) {
         const dataToSend = {
           data: dataPonto,
@@ -221,11 +341,13 @@ const HistoricoScreen = () => {
             titulo,
             descricao,
             subcategoria,
-            anexo: anexo ?? null,
+            anexo: anexo ?? 'null',
             data_inicio: dataInicio,
             data_termino: dataTermino
           }
         };
+
+        setLoading(true);
 
         const response = await api.post('/retificar', dataToSend);
 
@@ -241,32 +363,62 @@ const HistoricoScreen = () => {
         setDataInicio(null);
         setDataTermino(null);
         setAnexo(null);
+        fetchPontosUsuario();
+        setLoading(false);
       } else {
-        const useDatabase = await useUserDatabase();
-        const response = await useDatabase.retificarPontoLocal(
-          dataPonto ?? new Date(),
-          tipoPonto ?? null,
-          latitudePonto ?? '',
-          longitudePonto ?? '',
-          userID,
-          pontoId ?? null,
-          titulo,
-          descricao,
-          anexo,
-          subcategoria,
-          dataInicio ?? new Date(),
-          dataTermino ?? new Date()
-        );
+        try {
+          const useDatabase = await useUserDatabase();
+          if (!useDatabase) {
+            throw new Error('Não foi possível acessar o banco de dados local');
+          }
 
-        if (!response) {
-          console.log('Não foi possivel gravar a retificação localmente')
+          // Tentar salvar a retificação localmente
+          const response = await useDatabase.retificarPontoLocal(
+            dataPonto ?? new Date(),
+            tipoPonto ?? null,
+            latitudePonto ?? '',
+            longitudePonto ?? '',
+            userID,
+            pontoId ?? null,
+            titulo,
+            descricao,
+            anexo,
+            subcategoria,
+            dataInicio ?? new Date(),
+            dataTermino ?? new Date()
+          ).catch(error => {
+            console.error('Erro ao salvar retificação:', error);
+            throw new Error('Falha ao salvar no banco de dados local');
+          });
+
+          if (!response) {
+            throw new Error('Não foi possível gravar a retificação localmente');
+          }
+
+          Alert.alert('Sucesso', 'Retificação Gravada com Sucesso!');
+          setFormModalVisible(false);
+          setTitulo('');
+          setDescricao('');
+          setSubcategoria('');
+          setDataInicio(null);
+          setDataTermino(null);
+          setAnexo(null);
+        } catch (dbError) {
+          console.error('Erro no banco de dados local:', dbError);
+          Alert.alert(
+            'Erro',
+            'Não foi possível salvar a retificação localmente. Por favor, tente novamente quando estiver online.'
+          );
         }
-
-        Alert.alert('Retificação Gravada com Sucesso!');
       }
     } catch (error) {
-      console.error(error);
-      Alert.alert('Erro', error instanceof Error ? error.message : 'Erro desconhecido');
+      console.error('Erro geral:', error);
+      Alert.alert(
+        'Erro',
+        error instanceof Error ? error.message : 'Erro desconhecido ao processar a retificação'
+      );
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -324,23 +476,33 @@ const HistoricoScreen = () => {
             timeContainerStyle={{ minWidth: 52, marginTop: 5 }}
             descriptionStyle={{ color: 'gray' }}
             renderDetail={renderDetail}
-            renderTime={(rowData) => (
-              <Text
-                style={{
-                  textAlign: 'center',
-                  backgroundColor: rowData.status === 'inconsistente' ? 'orange' : '#2196F3',
-                  color: 'white',
-                  marginTop: 8,
-                  height: 32,
-                  padding: 5,
-                  borderRadius: 13,
-                }}
-              >
-                {rowData.time}
-              </Text>
-            )}
+            renderTime={(rowData) => {
+              const isRetificado = rowData.retflg === '1';
+              const isInconsistente = rowData.status === 'inconsistente';
+
+              const backgroundColor = isRetificado
+                ? 'green'
+                : (isInconsistente ? 'orange' : '#2196F3');
+
+              return (
+                <Text
+                  style={{
+                    textAlign: 'center',
+                    backgroundColor: backgroundColor,
+                    color: 'white',
+                    marginTop: 8,
+                    height: 32,
+                    padding: 5,
+                    borderRadius: 13,
+                  }}
+                >
+                  {rowData.time}
+                </Text>
+              );
+            }}
             style={{ paddingTop: 5 }}
           />
+
 
         ) : (
           <View style={styles.centeredView}>
@@ -454,7 +616,7 @@ const HistoricoScreen = () => {
                   onChange={handleDateChangeTermino}
                 />
               )}
-              <TouchableOpacity onPress={handleFilePicker} style={styles.filePicker}>
+              <TouchableOpacity onPress={handleImagePick} style={styles.filePicker}>
                 <Text>Selecionar Anexo</Text>
               </TouchableOpacity>
               {anexo && (
@@ -540,7 +702,7 @@ const HistoricoScreen = () => {
                   onChange={handleDateChangeTermino}
                 />
               )}
-              <TouchableOpacity onPress={handleFilePicker} style={styles.filePicker}>
+              <TouchableOpacity onPress={handleImagePick} style={styles.filePicker}>
                 <Text>Selecionar Anexo</Text>
               </TouchableOpacity>
               {anexo && (

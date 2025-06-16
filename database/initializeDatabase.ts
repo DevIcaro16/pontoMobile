@@ -136,7 +136,7 @@ export async function initializeDatabase(database: SQLiteDatabase) {
             escala INTEGER DEFAULT NULL,
             modeloBatida INTEGER DEFAULT NULL,
             statusmsg varchar(200) DEFAULT 'OK',
-            foto_path varchar(240) DEFAULT 'foto.png',
+            foto_path TEXT,
             status_cod INTEGER DEFAULT NULL,
             retflg CHAR(1) DEFAULT ''
         );
