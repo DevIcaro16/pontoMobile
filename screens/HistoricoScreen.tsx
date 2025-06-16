@@ -62,8 +62,9 @@ const HistoricoScreen = () => {
 
   const [items, setItems] = useState([
     { label: 'Atestado', value: 'atestado' },
-    { label: 'Justificativa', value: 'justificativa' },
-    { label: 'Sistema', value: 'sistema' },
+    // { label: 'Justificativa', value: 'justificativa' },
+    { label: 'Transporte', value: 'transporte' },
+    // { label: 'Sistema', value: 'sistema' },
     { label: 'Aplicativo mobile', value: 'app' },
     { label: 'Outro', value: 'outro' }
   ]);
@@ -208,25 +209,25 @@ const HistoricoScreen = () => {
     );
   };
 
-  const compressAndConvertToBase64 = async (uri: string): Promise<string> => {
-    try {
-      // Comprime a imagem
-      const manipResult = await ImageManipulator.manipulateAsync(
-        uri,
-        [{ resize: { width: 800 } }], // Redimensiona para largura máxima de 800px
-        { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG } // Comprime com qualidade 70%
-      );
+  // const compressAndConvertToBase64 = async (uri: string): Promise<string> => {
+  //   try {
+  //     // Comprime a imagem
+  //     const manipResult = await ImageManipulator.manipulateAsync(
+  //       uri,
+  //       [{ resize: { width: 800 } }], // Redimensiona para largura máxima de 800px
+  //       { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG } // Comprime com qualidade 70%
+  //     );
 
-      // Converte para base64
-      const base64 = await FileSystem.readAsStringAsync(manipResult.uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      return base64;
-    } catch (error) {
-      console.error('Erro ao processar imagem:', error);
-      throw error;
-    }
-  };
+  //     // Converte para base64
+  //     const base64 = await FileSystem.readAsStringAsync(manipResult.uri, {
+  //       encoding: FileSystem.EncodingType.Base64,
+  //     });
+  //     return base64;
+  //   } catch (error) {
+  //     console.error('Erro ao processar imagem:', error);
+  //     throw error;
+  //   }
+  // };
 
   const handleImagePick = async () => {
     try {
@@ -273,54 +274,54 @@ const HistoricoScreen = () => {
     }
   };
 
-  const handleFilePicker = async () => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: ['image/*', 'application/pdf'],
-      });
+  // const handleFilePicker = async () => {
+  //   try {
+  //     const result = await DocumentPicker.getDocumentAsync({
+  //       type: ['image/*', 'application/pdf'],
+  //     });
 
-      if (result.assets && result.assets[0]) {
-        const file = result.assets[0];
+  //     if (result.assets && result.assets[0]) {
+  //       const file = result.assets[0];
 
-        // Verifica se é uma imagem
-        if (file.mimeType?.startsWith('image/')) {
-          // Comprime a imagem com qualidade melhor
-          const manipResult = await ImageManipulator.manipulateAsync(
-            file.uri,
-            [{ resize: { width: 800 } }], // Redimensiona para largura máxima de 800px
-            { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG } // Comprime com qualidade 70%
-          );
+  //       // Verifica se é uma imagem
+  //       if (file.mimeType?.startsWith('image/')) {
+  //         // Comprime a imagem com qualidade melhor
+  //         const manipResult = await ImageManipulator.manipulateAsync(
+  //           file.uri,
+  //           [{ resize: { width: 800 } }], // Redimensiona para largura máxima de 800px
+  //           { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG } // Comprime com qualidade 70%
+  //         );
 
-          // Converte para base64
-          const base64 = await FileSystem.readAsStringAsync(manipResult.uri, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
+  //         // Converte para base64
+  //         const base64 = await FileSystem.readAsStringAsync(manipResult.uri, {
+  //           encoding: FileSystem.EncodingType.Base64,
+  //         });
 
-          // Verifica o tamanho do base64 (limite de 5MB para text)
-          if (base64.length > 5000000) { // Aproximadamente 5MB em base64
-            Alert.alert(
-              'Arquivo muito grande',
-              'A imagem selecionada é muito grande. Por favor, selecione uma imagem menor.'
-            );
-            return;
-          }
+  //         // Verifica o tamanho do base64 (limite de 5MB para text)
+  //         if (base64.length > 5000000) { // Aproximadamente 5MB em base64
+  //           Alert.alert(
+  //             'Arquivo muito grande',
+  //             'A imagem selecionada é muito grande. Por favor, selecione uma imagem menor.'
+  //           );
+  //           return;
+  //         }
 
-          setAnexo({
-            ...file,
-            base64: base64
-          });
-        } else {
-          Alert.alert(
-            'Tipo de arquivo não suportado',
-            'Por favor, selecione apenas imagens.'
-          );
-        }
-      }
-    } catch (err) {
-      console.error(err);
-      Alert.alert('Erro', 'Não foi possível processar o arquivo');
-    }
-  };
+  //         setAnexo({
+  //           ...file,
+  //           base64: base64
+  //         });
+  //       } else {
+  //         Alert.alert(
+  //           'Tipo de arquivo não suportado',
+  //           'Por favor, selecione apenas imagens.'
+  //         );
+  //       }
+  //     }
+  //   } catch (err) {
+  //     console.error(err);
+  //     Alert.alert('Erro', 'Não foi possível processar o arquivo');
+  //   }
+  // };
 
   const handleFormSubmit = async () => {
     if (!titulo || !descricao || !subcategoria) {
@@ -329,25 +330,28 @@ const HistoricoScreen = () => {
     }
 
     try {
-      console.log('ANEXO: ' + anexo)
       if (isConnected) {
+        // Garantir que a data está em um formato válido
+        const dataPontoFormatada = dataPonto ? new Date(dataPonto).toISOString() : null;
+
         const dataToSend = {
-          data: dataPonto,
-          tipo: tipoPonto,
-          latitude: latitudePonto,
-          longitude: longitudePonto,
+          data: dataPontoFormatada,
+          tipo: tipoPonto ? parseInt(tipoPonto.toString()) : null,
+          latitude: latitudePonto?.toString() || '',
+          longitude: longitudePonto?.toString() || '',
           requisicao: {
-            user_id: userID,
+            user_id: parseInt(userID.toString()),
             titulo,
             descricao,
             subcategoria,
-            anexo: anexo ?? 'null',
-            data_inicio: dataInicio,
-            data_termino: dataTermino
+            anexo: anexo || null,
+            data_inicio: dataInicio ? dataInicio.toISOString() : null,
+            data_termino: dataTermino ? dataTermino.toISOString() : null
           }
         };
 
         setLoading(true);
+        console.log('Enviando dados:', JSON.stringify(dataToSend, null, 2));
 
         const response = await api.post('/retificar', dataToSend);
 
@@ -357,6 +361,7 @@ const HistoricoScreen = () => {
 
         Alert.alert('Sucesso', 'Solicitação de retificação enviada com sucesso.');
         setFormModalVisible(false);
+        setFormJustificativaModalVisible(false);
         setTitulo('');
         setDescricao('');
         setSubcategoria('');
@@ -372,20 +377,24 @@ const HistoricoScreen = () => {
             throw new Error('Não foi possível acessar o banco de dados local');
           }
 
-          // Tentar salvar a retificação localmente
+          // Garantir que as datas estão em um formato válido para o banco local
+          const dataPontoLocal = dataPonto ? new Date(dataPonto) : new Date();
+          const dataInicioLocal = dataInicio || new Date();
+          const dataTerminoLocal = dataTermino || new Date();
+
           const response = await useDatabase.retificarPontoLocal(
-            dataPonto ?? new Date(),
-            tipoPonto ?? null,
-            latitudePonto ?? '',
-            longitudePonto ?? '',
-            userID,
+            dataPontoLocal,
+            tipoPonto ? parseInt(tipoPonto.toString()) : null,
+            latitudePonto?.toString() || '',
+            longitudePonto?.toString() || '',
+            userID.toString(),
             pontoId ?? null,
             titulo,
             descricao,
-            anexo,
+            anexo || null,
             subcategoria,
-            dataInicio ?? new Date(),
-            dataTermino ?? new Date()
+            dataInicioLocal,
+            dataTerminoLocal
           ).catch(error => {
             console.error('Erro ao salvar retificação:', error);
             throw new Error('Falha ao salvar no banco de dados local');
