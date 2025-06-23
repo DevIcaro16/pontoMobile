@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Button, Alert, Modal, TouchableOpacity, TextInput, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Button, Alert, Modal, TouchableOpacity, TextInput, Platform, ActivityIndicator, Linking } from 'react-native';
 import Timeline from 'react-native-timeline-flatlist';
 import { useAuth } from '../contexts/AuthContext';
-import MapView, { Marker } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import NetInfo from '@react-native-community/netinfo';
 import * as DocumentPicker from 'expo-document-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -50,12 +50,14 @@ const HistoricoScreen = () => {
   const [showDatePickerInicio, setShowDatePickerInicio] = useState(false);
   const [showDatePickerTermino, setShowDatePickerTermino] = useState(false);
   const [selectedData, setSelectedData] = useState<any>(null);
-  const [pontoId, setPontoId] = useState();
-  const [dataPonto, setDataPonto] = useState();
-  const [tipoPonto, setTipoPonto] = useState();
-  const [latitudePonto, setLatitudePonto] = useState();
-  const [longitudePonto, setLongitudePonto] = useState();
+  const [pontoId, setPontoId] = useState<number | undefined>();
+  const [dataPonto, setDataPonto] = useState<string | undefined>();
+  const [tipoPonto, setTipoPonto] = useState<number | undefined>();
+  const [latitudePonto, setLatitudePonto] = useState<number | undefined>();
+  const [longitudePonto, setLongitudePonto] = useState<number | undefined>();
   const [loading, setLoading] = useState<boolean>(true);
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const [mapError, setMapError] = useState(false);
 
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState('');
@@ -68,6 +70,140 @@ const HistoricoScreen = () => {
     { label: 'Aplicativo mobile', value: 'app' },
     { label: 'Outro', value: 'outro' }
   ]);
+
+  // Componente de mapa seguro com fallback
+  const SafeMapView = ({ latitude, longitude, title, description }: {
+    latitude: number;
+    longitude: number;
+    title: string;
+    description: string;
+  }) => {
+    const [showNativeMap, setShowNativeMap] = useState(false);
+    const [mapLoaded, setMapLoaded] = useState(false);
+
+    // Função para abrir no Google Maps
+    const openInGoogleMaps = () => {
+      const url = `https://www.google.com/maps?q=${latitude},${longitude}`;
+      Linking.openURL(url).catch(err => {
+        console.error('Erro ao abrir Google Maps:', err);
+        Alert.alert('Erro', 'Não foi possível abrir o Google Maps');
+      });
+    };
+
+    // Por padrão, mostrar o fallback (mais estável)
+    if (!showNativeMap) {
+      return (
+        <View style={styles.mapContainer}>
+          <Text style={styles.locationTitle}>Localização do Ponto</Text>
+          <View style={styles.coordinatesContainer}>
+            <Text style={styles.coordinatesText}>
+              Latitude: {latitude.toFixed(6)}
+            </Text>
+            <Text style={styles.coordinatesText}>
+              Longitude: {longitude.toFixed(6)}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.googleMapsButton}
+            onPress={openInGoogleMaps}
+          >
+            <Text style={styles.googleMapsButtonText}>Abrir no Google Maps</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => setShowNativeMap(true)}
+          >
+            <Text style={styles.retryButtonText}>Tentar mapa nativo</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    // Tentar carregar o mapa nativo
+    try {
+      return (
+        <View style={styles.mapContainer}>
+          {!mapLoaded && (
+            <View style={styles.mapLoadingContainer}>
+              <ActivityIndicator size="large" color="#007AFF" />
+              <Text style={styles.mapLoadingText}>Carregando mapa...</Text>
+              <Text style={styles.mapLoadingSubtext}>Pode demorar alguns segundos</Text>
+            </View>
+          )}
+          <MapView
+            style={[styles.map, !mapLoaded && styles.mapHidden]}
+            provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+            minZoomLevel={15}
+            maxZoomLevel={20}
+            showsUserLocation={false}
+            showsMyLocationButton={false}
+            showsCompass={false}
+            showsScale={false}
+            showsBuildings={false}
+            showsTraffic={false}
+            showsIndoors={false}
+            loadingEnabled={true}
+            loadingIndicatorColor="#007AFF"
+            loadingBackgroundColor="#ffffff"
+            onMapReady={() => {
+              console.log('Mapa carregado com sucesso');
+              setMapLoaded(true);
+            }}
+            initialRegion={{
+              latitude,
+              longitude,
+              latitudeDelta: 0.01,
+              longitudeDelta: 0.01,
+            }}>
+            <Marker
+              coordinate={{
+                latitude,
+                longitude,
+              }}
+              title={title}
+              description={description}
+              pinColor="#007AFF"
+            />
+          </MapView>
+          <View style={styles.mapButtonsContainer}>
+            <TouchableOpacity
+              style={styles.fallbackButton}
+              onPress={() => setShowNativeMap(false)}
+            >
+              <Text style={styles.fallbackButtonText}>Voltar para coordenadas</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      );
+    } catch (error) {
+      console.error('Erro ao renderizar mapa:', error);
+      return (
+        <View style={styles.mapContainer}>
+          <Text style={styles.noLocationText}>Erro ao carregar mapa nativo</Text>
+          <View style={styles.coordinatesContainer}>
+            <Text style={styles.coordinatesText}>
+              Latitude: {latitude.toFixed(6)}
+            </Text>
+            <Text style={styles.coordinatesText}>
+              Longitude: {longitude.toFixed(6)}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.googleMapsButton}
+            onPress={openInGoogleMaps}
+          >
+            <Text style={styles.googleMapsButtonText}>Abrir no Google Maps</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => setShowNativeMap(false)}
+          >
+            <Text style={styles.retryButtonText}>Voltar para coordenadas</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+  };
 
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener(state => {
@@ -154,8 +290,26 @@ const HistoricoScreen = () => {
 
 
   const handleActionPress = (item: any) => {
-    setSelectedItem(item);
-    setModalVisible(true);
+    try {
+      if (!item) {
+        console.error('Item não encontrado');
+        return;
+      }
+
+      // Validação básica dos dados necessários
+      if (!item.data || !item.latitudeAtual || !item.longitudeAtual) {
+        console.warn('Dados do ponto incompletos:', item);
+      }
+
+      // Resetar estados do mapa
+      setMapLoaded(false);
+      setMapError(false);
+
+      setSelectedItem(item);
+      setModalVisible(true);
+    } catch (error) {
+      console.error('Erro ao abrir modal de detalhes:', error);
+    }
   };
 
   const handleRetificar = (data: any) => {
@@ -209,26 +363,6 @@ const HistoricoScreen = () => {
     );
   };
 
-  // const compressAndConvertToBase64 = async (uri: string): Promise<string> => {
-  //   try {
-  //     // Comprime a imagem
-  //     const manipResult = await ImageManipulator.manipulateAsync(
-  //       uri,
-  //       [{ resize: { width: 800 } }], // Redimensiona para largura máxima de 800px
-  //       { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG } // Comprime com qualidade 70%
-  //     );
-
-  //     // Converte para base64
-  //     const base64 = await FileSystem.readAsStringAsync(manipResult.uri, {
-  //       encoding: FileSystem.EncodingType.Base64,
-  //     });
-  //     return base64;
-  //   } catch (error) {
-  //     console.error('Erro ao processar imagem:', error);
-  //     throw error;
-  //   }
-  // };
-
   const handleImagePick = async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -274,55 +408,6 @@ const HistoricoScreen = () => {
     }
   };
 
-  // const handleFilePicker = async () => {
-  //   try {
-  //     const result = await DocumentPicker.getDocumentAsync({
-  //       type: ['image/*', 'application/pdf'],
-  //     });
-
-  //     if (result.assets && result.assets[0]) {
-  //       const file = result.assets[0];
-
-  //       // Verifica se é uma imagem
-  //       if (file.mimeType?.startsWith('image/')) {
-  //         // Comprime a imagem com qualidade melhor
-  //         const manipResult = await ImageManipulator.manipulateAsync(
-  //           file.uri,
-  //           [{ resize: { width: 800 } }], // Redimensiona para largura máxima de 800px
-  //           { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG } // Comprime com qualidade 70%
-  //         );
-
-  //         // Converte para base64
-  //         const base64 = await FileSystem.readAsStringAsync(manipResult.uri, {
-  //           encoding: FileSystem.EncodingType.Base64,
-  //         });
-
-  //         // Verifica o tamanho do base64 (limite de 5MB para text)
-  //         if (base64.length > 5000000) { // Aproximadamente 5MB em base64
-  //           Alert.alert(
-  //             'Arquivo muito grande',
-  //             'A imagem selecionada é muito grande. Por favor, selecione uma imagem menor.'
-  //           );
-  //           return;
-  //         }
-
-  //         setAnexo({
-  //           ...file,
-  //           base64: base64
-  //         });
-  //       } else {
-  //         Alert.alert(
-  //           'Tipo de arquivo não suportado',
-  //           'Por favor, selecione apenas imagens.'
-  //         );
-  //       }
-  //     }
-  //   } catch (err) {
-  //     console.error(err);
-  //     Alert.alert('Erro', 'Não foi possível processar o arquivo');
-  //   }
-  // };
-
   const handleFormSubmit = async () => {
     if (!titulo || !descricao || !subcategoria) {
       Alert.alert('Erro', 'Todos os campos são obrigatórios.');
@@ -336,11 +421,11 @@ const HistoricoScreen = () => {
 
         const dataToSend = {
           data: dataPontoFormatada,
-          tipo: tipoPonto ? parseInt(tipoPonto.toString()) : null,
-          latitude: latitudePonto?.toString() || '',
-          longitude: longitudePonto?.toString() || '',
+          tipo: tipoPonto ? parseInt(String(tipoPonto)) : null,
+          latitude: latitudePonto ? String(latitudePonto) : '',
+          longitude: longitudePonto ? String(longitudePonto) : '',
           requisicao: {
-            user_id: parseInt(userID.toString()),
+            user_id: parseInt(String(userID)),
             titulo,
             descricao,
             subcategoria,
@@ -384,10 +469,10 @@ const HistoricoScreen = () => {
 
           const response = await useDatabase.retificarPontoLocal(
             dataPontoLocal,
-            tipoPonto ? parseInt(tipoPonto.toString()) : null,
-            latitudePonto?.toString() || '',
-            longitudePonto?.toString() || '',
-            userID.toString(),
+            tipoPonto ? parseInt(String(tipoPonto)) : null,
+            latitudePonto ? String(latitudePonto) : '',
+            longitudePonto ? String(longitudePonto) : '',
+            String(userID),
             pontoId ?? null,
             titulo,
             descricao,
@@ -533,45 +618,73 @@ const HistoricoScreen = () => {
           <View style={styles.centeredView}>
             <View style={styles.modalView}>
               <Text style={styles.modalTitle}>Detalhes do Ponto</Text>
-              <Text>Descrição: {selectedItem.descricao}</Text>
-              <Text>Data: {new Date(selectedItem.data).toLocaleString('pt-BR', {
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-              })}</Text>
+              <Text>Descrição: {selectedItem.descricao || 'Sem Descrição'}</Text>
+              <Text>Data: {(() => {
+                try {
+                  if (!selectedItem.data) return 'Data não disponível';
+                  const data = new Date(selectedItem.data);
+                  if (isNaN(data.getTime())) return 'Data inválida';
+                  data.setHours(data.getHours() + 3); // Ajuste de fuso horário manual
+                  return data.toLocaleString('pt-BR', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false
+                  });
+                } catch (error) {
+                  console.error('Erro ao formatar data:', error);
+                  return 'Erro ao formatar data';
+                }
+              })()}</Text>
 
-              <View style={styles.mapContainer}>
-                <MapView
-                  style={styles.map}
-                  minZoomLevel={17}
-                  initialRegion={{
-                    latitude: Number(selectedItem.latitudeAtual),
-                    longitude: Number(selectedItem.longitudeAtual),
-                    latitudeDelta: 0.0922,
-                    longitudeDelta: 0.0421,
+              {(() => {
+                try {
+                  const lat = Number(selectedItem.latitudeAtual);
+                  const lng = Number(selectedItem.longitudeAtual);
+
+                  // Verificação mais rigorosa das coordenadas
+                  if (isNaN(lat) || isNaN(lng) || lat === 0 || lng === 0 ||
+                    lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+                    return (
+                      <View style={styles.mapContainer}>
+                        <Text style={styles.noLocationText}>Localização não disponível</Text>
+                      </View>
+                    );
+                  }
+
+                  return (
+                    <SafeMapView
+                      latitude={lat}
+                      longitude={lng}
+                      title="Localização do Ponto"
+                      description={selectedItem.descricao || "Ponto registrado"}
+                    />
+                  );
+                } catch (error) {
+                  console.error('Erro ao renderizar mapa:', error);
+                  return (
+                    <View style={styles.mapContainer}>
+                      <Text style={styles.noLocationText}>Erro ao carregar mapa</Text>
+                    </View>
+                  );
+                }
+              })()}
+
+              <View style={styles.modalBottomContainer}>
+                <Text style={styles.status}>Status: {selectedItem.statusmsg || 'N/A'}</Text>
+
+                <TouchableOpacity
+                  style={[styles.button, styles.buttonClose]}
+                  onPress={() => {
+                    setModalVisible(!modalVisible);
+                    setSelectedItem(null);
                   }}>
-                  <Marker
-                    coordinate={{
-                      latitude: Number(selectedItem.latitudeAtual),
-                      longitude: Number(selectedItem.longitudeAtual),
-                    }}
-                    title={"Localização"}
-                    description={selectedItem.descricao}
-                  />
-                </MapView>
+                  <Text style={styles.textStyle}>Fechar</Text>
+                </TouchableOpacity>
               </View>
-              <Text style={styles.status}>Status: {selectedItem.statusmsg}</Text>
-
-              <TouchableOpacity
-                style={[styles.button, styles.buttonClose]}
-                onPress={() => {
-                  setModalVisible(!modalVisible);
-                  setSelectedItem(null);
-                }}>
-                <Text style={styles.textStyle}>Fechar</Text>
-              </TouchableOpacity>
             </View>
           </View>
         </Modal>
@@ -789,6 +902,7 @@ const styles = StyleSheet.create({
   },
   modalView: {
     width: '90%',
+    maxHeight: '80%',
     margin: 20,
     backgroundColor: 'white',
     borderRadius: 20,
@@ -867,6 +981,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 200,
     marginTop: 20,
+    marginBottom: 10,
   },
   map: {
     width: '100%',
@@ -876,6 +991,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     marginTop: 10,
+    flex: 1,
+    textAlign: 'left',
   },
   offlineText: {
     fontSize: 18,
@@ -926,6 +1043,98 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontSize: 16,
     color: '#333',
+  },
+  noLocationText: {
+    fontSize: 16,
+    textAlign: 'center',
+    color: 'red',
+  },
+  mapLoadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  mapLoadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#333',
+  },
+  mapLoadingSubtext: {
+    marginTop: 5,
+    fontSize: 12,
+    color: '#666',
+  },
+  mapHidden: {
+    opacity: 0,
+  },
+  retryButton: {
+    backgroundColor: '#2196F3',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 10,
+  },
+  retryButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  coordinatesContainer: {
+    marginVertical: 10,
+    padding: 10,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+  },
+  coordinatesText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#666',
+    textAlign: 'center',
+    marginVertical: 2,
+  },
+  googleMapsButton: {
+    backgroundColor: '#2196F3',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 10,
+  },
+  googleMapsButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  locationTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  fallbackButton: {
+    backgroundColor: '#2196F3',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 10,
+  },
+  fallbackButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  mapButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 10,
+    width: '100%',
+  },
+  modalBottomContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 54,
+    width: '100%',
+    paddingHorizontal: 10,
   },
 });
 

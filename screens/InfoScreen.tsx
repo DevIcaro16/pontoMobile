@@ -20,9 +20,9 @@ const InfoScreen = () => {
   console.log(userData);
   // Usa destructuring para pegar os valores, evitando repetição
   const empresa = user?.empresa ?? '';
-  const cargo = user?.cliente ?? '';
   const username = user?.username ?? '';
   const escala = user?.funcoes?.escala ?? '';
+  const cargo = user?.funcoes?.des ?? '';
   const localemp = user?.funcoes?.setor ?? '5X2';
 
   let diaDaSemana: number;

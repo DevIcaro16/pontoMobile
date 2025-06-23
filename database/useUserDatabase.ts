@@ -347,6 +347,139 @@ export function useUserDatabase() {
 
 
 
+    async function verificarDuplicatas(userId: number): Promise<{ isSuccess: boolean; message: string }> {
+        const db = await getDatabase();
+
+        try {
+            console.log("=== VERIFICAÇÃO DE DUPLICATAS ===");
+            console.log("Usuário ID:", userId);
+
+            // Busca todos os pontos do usuário para hoje
+            const hoje = new Date().toISOString().split("T")[0];
+            const pontosHoje = await db.getAllAsync(`
+                SELECT id, data, tipo, latitude, longitude, userId
+                FROM spi_pon 
+                WHERE userId = ? AND DATE(data) = ?
+                ORDER BY data ASC
+            `, [userId, hoje]);
+
+            console.log("Pontos de hoje:", pontosHoje.length);
+            console.log("Dados dos pontos:", pontosHoje);
+
+            if (pontosHoje.length === 0) {
+                return { isSuccess: true, message: "Nenhum ponto encontrado para hoje." };
+            }
+
+            // Verifica duplicatas por horário
+            const horarios = pontosHoje.map((p: any) => p.data);
+            const horariosUnicos = [...new Set(horarios)];
+
+            console.log("Horários únicos:", horariosUnicos);
+            console.log("Total de horários:", horarios.length);
+            console.log("Horários únicos:", horariosUnicos.length);
+
+            if (horarios.length > horariosUnicos.length) {
+                const duplicatas = horarios.length - horariosUnicos.length;
+                console.log(`ENCONTRADAS ${duplicatas} DUPLICATAS!`);
+
+                // Remove duplicatas mantendo apenas o primeiro de cada horário
+                for (const horario of horariosUnicos) {
+                    const pontosComHorario = pontosHoje.filter((p: any) => p.data === horario);
+                    if (pontosComHorario.length > 1) {
+                        console.log(`Horário ${horario} tem ${pontosComHorario.length} registros`);
+
+                        // Mantém o primeiro (menor ID) e remove os demais
+                        const idsParaRemover = pontosComHorario.slice(1).map((p: any) => p.id);
+                        console.log("IDs para remover:", idsParaRemover);
+
+                        for (const id of idsParaRemover) {
+                            await db.runAsync(`DELETE FROM spi_pon WHERE id = ?`, [id]);
+                            console.log(`Removido ponto ID: ${id}`);
+                        }
+                    }
+                }
+
+                return { isSuccess: true, message: `Removidas ${duplicatas} duplicatas.` };
+            } else {
+                console.log("Nenhuma duplicata encontrada por horário");
+                return { isSuccess: true, message: "Nenhuma duplicata encontrada." };
+            }
+
+        } catch (error) {
+            console.error("Erro ao verificar duplicatas:", error);
+            return { isSuccess: false, message: "Erro ao verificar duplicatas." };
+        }
+    }
+
+    async function verificarDuplicatasGeral(userId: number): Promise<{ isSuccess: boolean; message: string }> {
+        const db = await getDatabase();
+
+        try {
+            console.log("=== VERIFICAÇÃO GERAL DE DUPLICATAS ===");
+            console.log("Usuário ID:", userId);
+
+            // Busca todos os pontos do usuário
+            const todosPontos = await db.getAllAsync(`
+                SELECT id, data, tipo, latitude, longitude, userId
+                FROM spi_pon 
+                WHERE userId = ?
+                ORDER BY data ASC
+            `, [userId]);
+
+            console.log("Total de pontos encontrados:", todosPontos.length);
+
+            if (todosPontos.length === 0) {
+                return { isSuccess: true, message: "Nenhum ponto encontrado." };
+            }
+
+            // Agrupa por data e horário
+            const pontosPorData = new Map();
+
+            for (const ponto of todosPontos) {
+                const data = ponto.data.split(' ')[0]; // Pega apenas a data
+                const horario = ponto.data.split(' ')[1]; // Pega apenas o horário
+                const chave = `${data}-${horario}`;
+
+                if (!pontosPorData.has(chave)) {
+                    pontosPorData.set(chave, []);
+                }
+                pontosPorData.get(chave).push(ponto);
+            }
+
+            let totalDuplicatas = 0;
+            let totalRemovidas = 0;
+
+            for (const [chave, pontos] of pontosPorData) {
+                if (pontos.length > 1) {
+                    totalDuplicatas++;
+                    console.log(`Duplicata encontrada: ${chave} - ${pontos.length} registros`);
+
+                    // Mantém o primeiro (menor ID) e remove os demais
+                    const idsParaRemover = pontos.slice(1).map((p: any) => p.id);
+                    console.log("IDs para remover:", idsParaRemover);
+
+                    for (const id of idsParaRemover) {
+                        await db.runAsync(`DELETE FROM spi_pon WHERE id = ?`, [id]);
+                        totalRemovidas++;
+                        console.log(`Removido ponto ID: ${id}`);
+                    }
+                }
+            }
+
+            if (totalDuplicatas > 0) {
+                console.log(`Removidas ${totalRemovidas} duplicatas de ${totalDuplicatas} grupos`);
+                return { isSuccess: true, message: `Removidas ${totalRemovidas} duplicatas de ${totalDuplicatas} grupos.` };
+            } else {
+                console.log("Nenhuma duplicata encontrada");
+                return { isSuccess: true, message: "Nenhuma duplicata encontrada." };
+            }
+
+        } catch (error) {
+            console.error("Erro ao verificar duplicatas gerais:", error);
+            return { isSuccess: false, message: "Erro ao verificar duplicatas." };
+        }
+    }
+
     async function sincronizarBatidasPonto(userId: number): Promise<{ isSuccess: boolean; message: string }> {
 
         const db = await getDatabase();
@@ -364,10 +497,14 @@ export function useUserDatabase() {
 
         const arredondar = (num: number | string, casas = 6): number | null => {
             if (num === null) return null;
-            return parseFloat(num.toFixed(casas));
+            const numValue = typeof num === 'string' ? parseFloat(num) : num;
+            return parseFloat(numValue.toFixed(casas));
         }
 
         try {
+            // Primeiro, remove duplicatas existentes
+            await verificarDuplicatas(userId);
+
             const batidasLocais = await db.getAllAsync(
                 `SELECT * FROM spi_pon WHERE userId = ? AND DATE(data) BETWEEN ? AND ?`,
                 [userId, dataInicio, dataFim]
@@ -379,19 +516,46 @@ export function useUserDatabase() {
             }
             const batidasServidor = response.data.pontos;
 
-            const mapaLocais = new Map(batidasLocais.map(b => [`${b.data}-${b.tipo}-${arredondar(b.latitude, 6)}-${arredondar(b.longitude, 6)}`, b]));
-            const mapaServidor = new Map(batidasServidor.map(b => [`${b.data}-${b.tipo}-${b.latitude}-${b.longitude}`, b]));
+            // Chave de comparação mais robusta que ignora createdAt/updatedAt
+            const mapaLocais = new Map(batidasLocais.map((b: any) => [
+                `${b.data}-${b.tipo}-${arredondar(b.latitude, 6)}-${arredondar(b.longitude, 6)}-${b.userId}`,
+                b
+            ]));
+
+            const mapaServidor = new Map(batidasServidor.map((b: any) => [
+                `${b.data}-${b.tipo}-${arredondar(b.latitude, 6)}-${arredondar(b.longitude, 6)}-${b.userId}`,
+                b
+            ]));
 
             const novosParaLocal = [];
             const novosParaServidor = [];
 
+            // Verifica pontos do servidor que não existem localmente
             for (const [chave, batidaServidor] of mapaServidor) {
                 if (!mapaLocais.has(chave)) {
-                    // console.log(batidaServidor);
                     novosParaLocal.push(batidaServidor);
                 } else {
+                    // Se já existe, verifica se precisa atualizar (ignorando createdAt/updatedAt)
                     const batidaLocal = mapaLocais.get(chave);
-                    if (batidaLocal.updatedAt !== batidaServidor.updatedAt) {
+                    const precisaAtualizar =
+                        batidaLocal.username !== batidaServidor.username ||
+                        batidaLocal.empresa !== batidaServidor.empresa ||
+                        batidaLocal.diaDaSemana !== batidaServidor.diaDaSemana ||
+                        batidaLocal.distancia !== batidaServidor.distancia ||
+                        batidaLocal.descricao !== batidaServidor.descricao ||
+                        batidaLocal.cliente_id !== batidaServidor.cliente_id ||
+                        batidaLocal.cliente_des !== batidaServidor.cliente_des ||
+                        batidaLocal.status !== batidaServidor.status ||
+                        batidaLocal.adm_id !== batidaServidor.adm_id ||
+                        batidaLocal.resposta !== batidaServidor.resposta ||
+                        batidaLocal.escala !== batidaServidor.escala ||
+                        batidaLocal.modeloBatida !== batidaServidor.modeloBatida ||
+                        batidaLocal.statusmsg !== batidaServidor.statusmsg ||
+                        batidaLocal.foto_path !== batidaServidor.foto_path ||
+                        batidaLocal.status_cod !== batidaServidor.status_cod ||
+                        batidaLocal.retflg !== batidaServidor.retflg;
+
+                    if (precisaAtualizar) {
                         await db.runAsync(
                             `UPDATE spi_pon SET 
                                 username = ?, empresa = ?, tipo = ?, diaDaSemana = ?, 
@@ -414,11 +578,10 @@ export function useUserDatabase() {
                                 batidaServidor.escala ?? null,
                                 batidaServidor.modeloBatida ?? null,
                                 batidaServidor.statusmsg ?? "OK",
-                                // batidaServidor.foto_path ?? "foto.png",
                                 batidaServidor.foto_path,
                                 batidaServidor.status_cod ?? null,
                                 batidaServidor.retflg ?? '',
-                                batidaServidor.updatedAt,
+                                new Date().toISOString().replace("T", " ").split(".")[0], // Usa timestamp atual
                                 batidaServidor.id
                             ]
                         );
@@ -426,20 +589,18 @@ export function useUserDatabase() {
                 }
             }
 
+            // Verifica pontos locais que não existem no servidor
             for (const [chave, batidaLocal] of mapaLocais) {
                 if (!mapaServidor.has(chave)) {
-                    console.log(mapaServidor)
-                    console.log(chave);
                     novosParaServidor.push(batidaLocal);
                 }
             }
 
-            // Inserção no banco local
+            // Inserção no banco local usando INSERT OR REPLACE
             if (novosParaLocal.length > 0) {
                 for (const batida of novosParaLocal) {
-                    console.log('batida.data: ' + batida.data);
+                    console.log('Inserindo batida do servidor: ' + batida.data);
                     await db.runAsync(
-                        //Insere ou Atualiza (Verifica se o registro existe)
                         `INSERT OR REPLACE INTO spi_pon (
                             id, userId, username, empresa, tipo, data, diaDaSemana, latitude, longitude, 
                             createdAt, updatedAt, distancia, descricao, cliente_id, cliente_des, status, 
@@ -469,9 +630,13 @@ export function useUserDatabase() {
                 }
             }
 
+            // Remove duplicatas novamente após a sincronização
+            await verificarDuplicatas(userId);
+
             return { isSuccess: true, message: "Sincronização concluída com sucesso!" };
 
         } catch (error) {
+            console.error("Erro na sincronização:", error);
             return { isSuccess: false, message: "Erro na sincronização!" };
         }
     }
@@ -556,11 +721,27 @@ export function useUserDatabase() {
         }
     }
 
+    function getDataAtualBR(): string {
+        const agora = new Date();
+
+        // Obtém os valores com base no fuso horário de Fortaleza
+        const options = { timeZone: "America/Fortaleza", year: "numeric", month: "2-digit", day: "2-digit" };
+        const partes = new Intl.DateTimeFormat("en-CA", options).formatToParts(agora);
+
+        const ano = partes.find(p => p.type === "year")?.value;
+        const mes = partes.find(p => p.type === "month")?.value;
+        const dia = partes.find(p => p.type === "day")?.value;
+
+        return `${ano}-${mes}-${dia}`; // formato YYYY-MM-DD
+    }
+
 
     async function buscarPontosUsuario(userID: string) {
         // alert(Number(userID));
         const db = await getDatabase();
-        const dataAtual = new Date().toISOString().split("T")[0]; // Formato YYYY-MM-DD
+        const dataAtual = getDataAtualBR();
+
+        console.log("Data correta no fuso de Fortaleza:", dataAtual);
 
         try {
             const query = `
@@ -697,7 +878,8 @@ export function useUserDatabase() {
 
     const arredondar = (num: number | string, casas = 6): number | null => {
         if (num === null) return null;
-        return parseFloat(num.toFixed(casas));
+        const numValue = typeof num === 'string' ? parseFloat(num) : num;
+        return parseFloat(numValue.toFixed(casas));
     }
 
     async function retificarPontoLocal(
@@ -773,6 +955,8 @@ export function useUserDatabase() {
         buscarPontosUsuario2,
         buscarTodosPontosUsuario,
         fReplace,
-        retificarPontoLocal
+        retificarPontoLocal,
+        verificarDuplicatas,
+        verificarDuplicatasGeral
     };
 }

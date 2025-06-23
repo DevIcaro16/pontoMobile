@@ -38,6 +38,33 @@ interface PontoPayload {
   status_cod: number | null;
 }
 
+// Interface para os pontos retornados pelo banco local
+interface PontoLocal {
+  id: number;
+  userId: string | number;
+  username: string;
+  empresa: string;
+  tipo: number;
+  data: string;
+  diaDaSemana: string;
+  latitude: string;
+  longitude: string;
+  distancia: number;
+  createdAt: string;
+  updatedAt: string;
+  descricao?: string;
+  cliente_id?: number;
+  cliente_des?: string;
+  status?: string;
+  adm_id?: number;
+  resposta?: string;
+  escala?: string;
+  modeloBatida?: number;
+  statusmsg?: string;
+  foto_path?: string;
+  status_cod?: number;
+  retflg?: string;
+}
 
 const PontoScreen = () => {
 
@@ -53,7 +80,7 @@ const PontoScreen = () => {
   const [ultimoPontoReg, setUltimoPontoReg] = useState<boolean>(false);
   const [ultimoPontoHor, setUltimoPontoHor] = useState<Array<string | Date>>([]);
   const [isConnected, setIsConnected] = useState<boolean>(true);
-  const [tipo, setTipo] = useState<number>(0);
+  const [tipo, setTipo] = useState<number>(1);
   const [localizacao, setLocalizacao] = useState<string | null>(null);
 
   function formatDate(date: Date) {
@@ -92,11 +119,47 @@ const PontoScreen = () => {
         console.log('carregarPontos: ')
         console.log(pontosDifUndefined);
         setUltimoPontoHor(pontosDifUndefined);
+        // Atualiza o tipo baseado na quantidade de pontos existentes
         setTipo(pontosDoDia.length + 1);
         console.log('setUltimoPontoHor' + pontosDoDia + "-" + pontosDoDia.length);
+      } else {
+        // Se não há pontos, reseta o tipo para 1
+        setTipo(1);
       }
     } catch (error) {
       console.error("Erro ao buscar pontos diários do usuário:", error);
+    }
+  };
+
+  const removerDuplicatas = async () => {
+    try {
+      const result = await userDatabase.verificarDuplicatas(Number(userID));
+      if (result.isSuccess) {
+        Alert.alert("Sucesso", result.message);
+        // Recarrega os pontos após remover duplicatas
+        await carregarPontos();
+      } else {
+        Alert.alert("Erro", result.message);
+      }
+    } catch (error) {
+      console.error("Erro ao remover duplicatas:", error);
+      Alert.alert("Erro", "Erro ao remover duplicatas");
+    }
+  };
+
+  const removerDuplicatasGerais = async () => {
+    try {
+      const result = await userDatabase.verificarDuplicatasGeral(Number(userID));
+      if (result.isSuccess) {
+        Alert.alert("Sucesso", result.message);
+        // Recarrega os pontos após remover duplicatas
+        await carregarPontos();
+      } else {
+        Alert.alert("Erro", result.message);
+      }
+    } catch (error) {
+      console.error("Erro ao remover duplicatas gerais:", error);
+      Alert.alert("Erro", "Erro ao remover duplicatas gerais");
     }
   };
 
@@ -286,8 +349,13 @@ const PontoScreen = () => {
 
   async function baterPontoNoBanco(dataFormatada: Date, tipo: number): Promise<boolean> {
 
-    const latitudeStr = location?.latitude.toString() ?? '';
-    const longitudeStr = location?.longitude.toString() ?? '';
+    if (!location) {
+      Alert.alert("Erro", "Localização não disponível.");
+      return false;
+    }
+
+    const latitudeStr = location.latitude.toString();
+    const longitudeStr = location.longitude.toString();
 
     const verificarDistancia = await userDatabase.verificarLocalizacao(cliente, latitudeStr, longitudeStr);
 
@@ -302,8 +370,8 @@ const PontoScreen = () => {
       dataFormatada,
       distancia ?? 0,
       getDayOfWeek(new Date()),
-      location.latitude.toString(),
-      location.longitude.toString(),
+      latitudeStr,
+      longitudeStr,
       new Date(),
       new Date()
     );
@@ -422,9 +490,9 @@ const PontoScreen = () => {
     //console.log("Ultimo Ponto: " + ultimoPonto);
 
     // Verifica se existem pontos registrados
-    if (ultimoPonto === null) {
+    if (ultimoPonto === null || ultimoPonto.length === 0) {
 
-      setTipo(1);
+      // setTipo(1);
       const response = await baterPonto(dateTimeZoneBr, tipo);
       if (!response) {
         return;
@@ -465,8 +533,6 @@ const PontoScreen = () => {
         Alert.alert("Aguarde", "Ponto já foi registrado!");
         return;
       }
-
-
 
 
       if (ultimoPonto.length >= 4) {
@@ -516,27 +582,27 @@ const PontoScreen = () => {
 
     try {
       const useDatabase = await useUserDatabase();
-      const pontos: PontoPayload[] = await useDatabase.buscarPontosUsuario2(userIDFormat);
+      const pontos = await useDatabase.buscarPontosUsuario2(userIDFormat);
 
-      if (!Array.isArray(pontos)) {
-        throw new Error("Os pontos recebidos não são um array.");
+      if (!pontos || !Array.isArray(pontos)) {
+        throw new Error("Os pontos recebidos não são um array válido.");
       }
 
-      for (const ponto of pontos) {
+      for (const ponto of pontos as unknown as PontoLocal[]) {
 
         //console.log(ponto.data);
         //console.log(typeof (ponto.data));
         const payload: { pontosRequest: PontoPayload[] } = {
           pontosRequest: [
             {
-              userId: ponto.userId,
+              userId: Number(ponto.userId),
               username: ponto.username,
               empresa: ponto.empresa,
-              tipo: ponto.tipo,
-              data: ponto.data,
+              tipo: ponto.tipo.toString(),
+              data: new Date(ponto.data),
               diaDaSemana: ponto.diaDaSemana ?? "Desconhecido",
-              latitude: ponto.latitude ?? null,
-              longitude: ponto.longitude ?? null,
+              latitude: parseFloat(ponto.latitude) || null,
+              longitude: parseFloat(ponto.longitude) || null,
               createdAt: new Date(),
               updatedAt: new Date(),
               distancia: ponto.distancia ?? null,
@@ -550,7 +616,7 @@ const PontoScreen = () => {
               modeloBatida: modeloBatida ?? null,
               statusmsg: ponto.statusmsg ?? "OK",
               // foto_path: ponto.foto_path ?? "foto.png",
-              foto_path: ponto.foto_path,
+              foto_path: ponto.foto_path ?? "",
               status_cod: ponto.status_cod ?? null,
             },
           ],
@@ -617,24 +683,41 @@ const PontoScreen = () => {
           <Image source={require('../assets/digital.png')} style={styles.image} />
         </TouchableOpacity>
 
+        {/* Botão para remover duplicatas */}
+        {/* <TouchableOpacity
+          onPress={removerDuplicatas}
+          style={styles.cleanupButton}
+        >
+          <Text style={styles.cleanupButtonText}>Limpar Duplicatas (Hoje)</Text>
+        </TouchableOpacity> */}
+
+        {/* Botão para remover duplicatas gerais */}
+        {/* <TouchableOpacity
+          onPress={removerDuplicatasGerais}
+          style={[styles.cleanupButton, { backgroundColor: '#e74c3c' }]}
+        >
+          <Text style={styles.cleanupButtonText}>Limpar Duplicatas (Geral)</Text>
+        </TouchableOpacity> */}
+
         {ultimoPontoReg ? (
           <View style={styles.ultimoPontoWrapper}>
             <Text style={styles.ultimoPontoTitle}>Últimos Pontos:</Text>
-            {ultimoPontoHor.length > 0 ? (
-              ultimoPontoHor.map((horario, index) => {
-                //console.log("horario:", horario, "tipo:", typeof horario);
-
-                return (
-                  <Text key={index} style={styles.ultimoPontoContainer}>
-                    {typeof horario === "string"
-                      ? horario.split(":").slice(0, 2).join(":")
-                      : new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-                  </Text>
-                );
-              })
-            ) : (
-              <Text style={styles.ultimoPontoContainer}>Nenhum ponto registrado</Text>
-            )}
+            <View style={styles.pontosGrid}>
+              {ultimoPontoHor.length > 0 ? (
+                ultimoPontoHor.map((horario, index) => (
+                  <View key={index} style={styles.pontoItem}>
+                    <Text style={styles.pontoLabel}>Batida {index + 1}</Text>
+                    <Text style={styles.pontoHorario}>
+                      {typeof horario === "string"
+                        ? horario.split(":").slice(0, 2).join(":")
+                        : new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                    </Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.ultimoPontoContainer}>Nenhum ponto registrado</Text>
+              )}
+            </View>
           </View>
         ) : (
           <View style={styles.ultimoPontoWrapper}>
@@ -702,22 +785,50 @@ const styles = StyleSheet.create({
     // color: "#333",
   },
   ultimoPontoWrapper: {
-    // backgroundColor: "#fff",
-    padding: 2,
-    borderRadius: 10,
-    marginTop: 2,
-    // shadowColor: "#000",
-    // shadowOffset: { width: 0, height: 2 },
-    // shadowOpacity: 0.2,
-    // shadowRadius: 4,
-    // elevation: 2, // Sombra para Android
+    width: '100%',
+    padding: 15,
+    borderRadius: 15,
+    backgroundColor: '#f8f9fa',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   ultimoPontoTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "bold",
-    marginBottom: 4,
+    marginBottom: 15,
     textAlign: "center",
-    // color: "#444",
+    color: "#2c3e50",
+  },
+  pontosGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  pontoItem: {
+    width: '45%',
+    backgroundColor: '#ffffff',
+    padding: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  pontoLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 5,
+  },
+  pontoHorario: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#2c3e50',
   },
   mensagemRetorno: {
     marginTop: 20,
@@ -754,7 +865,25 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
+  cleanupButton: {
+    marginTop: 10,
+    marginBottom: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    backgroundColor: '#ff6b6b',
+    borderRadius: 25,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  cleanupButtonText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    textAlign: 'center',
+  },
 });
 
-export default PontoScreen;
 export default PontoScreen;
