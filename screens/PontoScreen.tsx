@@ -11,7 +11,6 @@ import { useUserDatabase } from '@/database/useUserDatabase';
 import api from '@/config/api';
 import RelogioHoraAtual from '@/components/HoraAtual';
 import MonitorConexao from '@/components/MonitorConexao';
-import * as Network from 'expo-network';
 
 interface PontoPayload {
   userId: number;
@@ -189,18 +188,17 @@ const PontoScreen = () => {
   useEffect(() => {
     const verificarConexao = async () => {
       try {
-        const status = await Network.getNetworkStateAsync();
-        setConectadoWifi(status.type === Network.NetworkStateType.WIFI);
+        const state = await NetInfo.fetch();
+        // Considera conectado se for wifi OU celular
+        setConectadoWifi(state.isConnected && (state.type === 'wifi' || state.type === 'cellular'));
       } catch (error) {
         console.error("Erro ao verificar conexão:", error);
       }
     };
 
     verificarConexao();
-
     // Verifica a conexão a cada 3 segundos
     const intervalo = setInterval(verificarConexao, 3000);
-
     return () => clearInterval(intervalo);
   }, []);
 
@@ -214,8 +212,7 @@ const PontoScreen = () => {
 
   useEffect(() => {
     const sincronizarBatidas = async () => {
-
-      // Se o Wi-Fi, não sincroniza
+      // Agora sincroniza se houver conexão Wi-Fi OU celular
       if (!conectadoWifi) return;
 
       try {
